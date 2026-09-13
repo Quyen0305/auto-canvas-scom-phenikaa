@@ -1,0 +1,16 @@
+node_modules/
+*.zip
+chan-doan-*.json
+/legacy-ui/
+/tests/archive-output/
+/tests/preview-server.cjs
+/tests/suite-preview.cjs
+/*.txt
+*.xlsx
+*.xls
+*.csv
+codex-clipboard-*
+.env
+.env.*
+*.pem
+*.key

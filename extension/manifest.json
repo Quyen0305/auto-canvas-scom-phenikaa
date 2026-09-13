@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Trợ lý học tập · Canvas & SCORM",
+  "version": "2.2.2",
+  "description": "Hai công cụ trong một tiện ích: bài học SCORM và trắc nghiệm Canvas, hỗ trợ Gemini API và Chrome AI.",
+  "minimum_chrome_version": "120",
+  "permissions": ["storage", "unlimitedStorage", "activeTab", "scripting"],
+  "host_permissions": ["https://*/*", "http://*/*", "file://*/*"],
+  "background": {"service_worker": "suite-background.js"},
+  "action": {"default_popup": "suite-popup.html", "default_title": "Trợ lý học tập · Canvas & SCORM"},
+  "content_scripts": [{
+    "matches": ["https://scorm.eduone.io.vn/*"],
+    "js": ["playback.js"],
+    "world": "MAIN",
+    "all_frames": true,
+    "match_about_blank": true,
+    "match_origin_as_fallback": true,
+    "run_at": "document_start"
+  }, {
+    "matches": ["https://scorm.eduone.io.vn/*"],
+    "js": ["core.js", "archive-content.js", "content.js"],
+    "all_frames": true,
+    "match_about_blank": true,
+    "match_origin_as_fallback": true,
+    "run_at": "document_idle"
+  }, {
+    "matches": ["https://*/*quizzes/*", "http://*/*quizzes/*", "file://*/*"],
+    "exclude_matches": ["https://scorm.eduone.io.vn/*"],
+    "css": ["canvas/styles.css","canvas-compact.css"],
+    "js": ["archive-content.js", "canvas-compat.js", "canvas/content.js", "canvas-controls.js"],
+    "run_at": "document_end"
+  }]
+}

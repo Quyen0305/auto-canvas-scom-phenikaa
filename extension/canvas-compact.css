@@ -1,0 +1,5 @@
+#canvas-ai-solver-widget [hidden]{display:none!important}
+#canvas-ai-solver-widget .canvas-ai-actions{grid-template-columns:1fr}
+#canvas-ai-solver-widget .canvas-ai-header{background:#266953}
+#canvas-ai-solver-widget .canvas-ai-btn-success{background:#266953}
+#canvas-ai-solver-widget .canvas-ai-btn-success:hover{background:#205740}
