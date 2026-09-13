@@ -1,6 +1,6 @@
 # Auto Canvas SCOM Phenikaa
 
-Tiện ích Chrome hỗ trợ trắc nghiệm Canvas, theo dõi bài học SCORM và xuất câu hỏi đã có đáp án đúng ra Excel. Phiên bản hiện tại: **2.2.4**.
+Tiện ích Chrome hỗ trợ làm bài trắc nghiệm trên Canvas, xem video bài giảng và làm bài tập theo dõi bài học SCORM và xuất câu hỏi đã có đáp án đúng ra Excel. Phiên bản hiện tại: **2.2.4**.
 
 Tên repository giữ chữ `scom`; tên kỹ thuật của định dạng bài học là **SCORM**. Khi cài vào Chrome, tiện ích hiển thị tên **Trợ lý học tập · Canvas & SCORM**.
 
@@ -19,7 +19,7 @@ Bạn cần Chrome trên máy tính và tài khoản đã đăng nhập vào tra
 5. Bấm **Load unpacked / Tải tiện ích đã giải nén**.
 6. Chọn thư mục **`extension`**, là thư mục chứa `manifest.json`. Không chọn file ZIP hoặc thư mục ngoài cùng của repository.
 7. Bấm biểu tượng mảnh ghép trên thanh công cụ Chrome và ghim **Trợ lý học tập · Canvas & SCORM** để dễ mở.
-8. Mở lại hoặc nhấn **F5** ở trang Canvas/SCORM đang dùng. Nếu còn bật tiện ích Canvas cũ riêng lẻ, hãy tắt nó để tránh hai tiện ích cùng thao tác.
+8. Mở lại hoặc nhấn **F5** ở trang Canvas, bài giảng video đang dùng. Nếu còn bật tiện ích Canvas cũ riêng lẻ, hãy tắt nó để tránh hai tiện ích cùng thao tác.
 
 Thư mục cần chọn:
 
