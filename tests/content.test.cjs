@@ -455,6 +455,143 @@ test('context invalidation during Gemini response prevents answer clicks',async(
   assert.equal([...h.doc.querySelectorAll('input')].some(x=>x.checked),false);h.close();
 });
 const roundedStorylineBar = (value = 28700, reported = '100%') => `<input type="range" data-ref="progressBar" aria-label="tiến trình slide" max="28757" step="100" value="${value}" aria-valuetext="${reported}" style="opacity:0">`;
+
+test('retry identity follows answer text across reordering, retaining multi-select combinations',()=>{
+  const options=['Một','Hai','Bốn'];
+  assert.equal(core.historyKey('Câu hỏi?',options,false),core.historyKey('Câu hỏi?',['Bốn','Một','Hai'],false));
+  assert.notEqual(core.questionKey('Câu hỏi?',options,false),core.questionKey('Câu hỏi?',['Bốn','Một','Hai'],false));
+  assert.notEqual(core.historyKey('Câu hỏi?',options,false),core.historyKey('Câu hỏi?',['Ba','Hai','Bốn'],false));
+  const mapped=core.remapHistory([{answers:[1,3],answerTexts:['Một','Bốn'],confirmedWrong:true,feedback:'Sai'}],['Bốn','Một','Hai']);
+  assert.deepEqual(mapped[0].answers,[1,2]);assert.equal(mapped[0].confirmedWrong,true);
+  assert.throws(()=>core.remapHistory(mapped,['Một','Một','Bốn']),/Không đối chiếu/);
+});
+
+for (const review of [false,true]) test(`reshuffled ${review?'review':'video'} question never resubmits the same wrong text when AI repeats it`,async()=>{
+  const orders=[['Một','Hai','Bốn','Tám'],['Tám','Một','Hai','Bốn'],['Hai','Bốn','Tám','Một'],['Một','Bốn','Hai','Tám']];
+  const form=order=>`<p class="acc-shadow-el acc-text">Rectangle 1</p><div class="acc-shadow-el acc-text">Chọn số theo yêu cầu của câu hỏi?</div>${order.map((t,i)=>`<div class="acc-shadow-el"><input class="acc-shadow-el" type="radio" name="q" aria-labelledby="opt${i}"><label id="opt${i}" style="display:none">${t}</label></div>`).join('')}<button id="submit">Gửi đáp án</button>`;
+  const submitted=[],requests=[];let continues=0;
+  const h=await setup(`${review?reviewMenu():''}<div class="slide">${form(orders[0])}</div>`,async q=>{
+    requests.push(JSON.parse(JSON.stringify(q)));
+    return {answers:[q.options.indexOf('Một')]};
+  });
+  h.doc.addEventListener('click',e=>{
+    const slide=h.doc.querySelector('.slide');
+    if(e.target.id==='submit'){
+      const input=h.doc.querySelector('input:checked');submitted.push(h.doc.getElementById(input.getAttribute('aria-labelledby')).textContent);
+      slide.innerHTML=submitted.length===4?'<p>Chính xác</p><button id="continue">Tiếp tục</button>':'<p>Sai</p><button id="retry">Thử lại</button>';
+    } else if(e.target.id==='retry') slide.innerHTML=form(orders[submitted.length]);
+    else if(e.target.id==='continue') {continues++;slide.innerHTML='<p>Bài giảng tiếp theo</p>';}
+  });
+  for(let i=0;i<28;i++)await h.step();
+  assert.deepEqual(submitted,['Một','Tám','Hai','Bốn']);assert.equal(requests.length,3);assert.equal(continues,1);
+  assert.equal(requests.every(q=>q.text==='Chọn số theo yêu cầu của câu hỏi?'),true);
+  assert.deepEqual(requests[1].history.map(x=>x.answers),[[2]]);
+  assert.deepEqual(requests[2].history.map(x=>x.answers),[[4],[3]]);
+  assert.equal(h.messages.some(m=>m.type==='PAUSE'),false);h.close();
+});
+
+test('choice order changing while AI is running discards its old positional answer',async()=>{
+  let finish;const h=await setup(`<div class="slide">${quiz()}</div>`,()=>new Promise(r=>finish=r));
+  const running=h.step();await Promise.resolve();
+  const labels=[...h.doc.querySelectorAll('label')];labels[2].before(labels[0]);
+  finish({answers:[0]});await running;
+  assert.equal([...h.doc.querySelectorAll('input')].some(x=>x.checked),false);h.close();
+});
+
+async function videoRetryFixture({acceptSeek=true,review=false,locked=false,startOnQuestion=false}={}) {
+  const h=await setup(`${reviewMenu()}<div class="slide"></div><input data-ref="progressBar" type="range" max="100000" value="10000" disabled><button id="next">Tiếp theo</button>`);
+  const slide=h.doc.querySelector('.slide'),range=h.doc.querySelector('[data-ref="progressBar"]');
+  let seeks=0,opens=0,next=0,retries=0;
+  const select=ref=>{
+    h.doc.querySelectorAll('.cs-listitem').forEach(el=>el.classList.toggle('cs-selected',el.dataset.ref===ref));
+    h.doc.getElementById('slide-label').textContent='slide: '+h.doc.querySelector(`[data-ref="${ref}"]`).dataset.slideTitle;
+  };
+  const video=()=>{
+    slide.innerHTML='<video></video>';range.value='10000';
+    Object.defineProperty(slide.querySelector('video'),'duration',{value:100});
+    slide.querySelector('video').currentTime=10;
+  };
+  select(review?'review2':'video');
+  if(startOnQuestion) {video();slide.insertAdjacentHTML('beforeend',quiz());range.value='100000';}
+  else {video();await h.step();slide.innerHTML=quiz();range.value='100000';}
+  range.addEventListener('change',()=>{seeks++;if(acceptSeek&&slide.querySelector('video'))slide.querySelector('video').currentTime=Number(range.value)/1000;});
+  h.doc.addEventListener('click',e=>{
+    if(e.target.id==='submit')slide.innerHTML='<p>Sai</p><button id="retry">Học lại</button>';
+    else if(e.target.id==='retry') {retries++;select('review1');video();}
+    else if(e.target.dataset.ref===(review?'review2':'video')) {opens++;select(e.target.dataset.ref);if(review){slide.innerHTML=quiz();range.value='100000';}else video();}
+    else if(e.target.id==='next')next++;
+  });
+  if(locked)h.doc.querySelector('[data-ref="video"]').setAttribute('aria-disabled','true');
+  for(let i=0;i<10&&!retries;i++)await h.step();
+  return {h,slide,range,select,counts:()=>({seeks,opens,next,retries})};
+}
+
+test('wrong video answer returns to exact video and seeks 98% using the player change handler',async()=>{
+  const r=await videoRetryFixture();
+  await r.h.step();await r.h.step();await r.h.step();
+  assert.deepEqual(r.counts(),{seeks:1,opens:1,next:0,retries:1});
+  assert.equal(r.range.disabled,true);assert.equal(r.range.value,'98000');
+  assert.equal(r.slide.querySelector('video').currentTime,98);
+  assert.equal(r.h.w.__lessonAssistant.diagnose().videoReturn,null);
+  await r.h.step();assert.equal(r.counts().next,0);
+  r.range.value='100000';r.slide.querySelector('video').currentTime=100;
+  await r.h.step();await r.h.step();assert.equal(r.counts().next,1);r.h.close();
+});
+
+test('starting on a question with its visible video also captures the retry target',async()=>{
+  const r=await videoRetryFixture({startOnQuestion:true});
+  await r.h.step();await r.h.step();await r.h.step();assert.equal(r.counts().seeks,1);r.h.close();
+});
+
+test('a slider change without actual media movement does not confirm the seek',async()=>{
+  const r=await videoRetryFixture({acceptSeek:false});
+  for(let i=0;i<13;i++)await r.h.step();
+  assert.equal(r.counts().seeks,1);assert.equal(r.counts().next,0);
+  assert.equal(r.slide.querySelector('video').currentTime,10);
+  assert.equal(r.h.messages.some(m=>m.type==='PAUSE'&&/98%/.test(m.text)),true);r.h.close();
+});
+
+test('review retry reopens its question without seeking a video',async()=>{
+  const r=await videoRetryFixture({review:true});
+  await r.h.step();await r.h.step();assert.equal(r.counts().opens,1);assert.equal(r.counts().seeks,0);r.h.close();
+});
+
+test('locked retry video is neither clicked nor sought',async()=>{
+  const r=await videoRetryFixture({locked:true});
+  for(let i=0;i<13;i++)await r.h.step();
+  assert.equal(r.counts().opens,0);assert.equal(r.counts().seeks,0);assert.equal(r.counts().next,0);r.h.close();
+});
+
+test('Stop cancels pending video return and seek',async()=>{
+  const r=await videoRetryFixture();r.h.send({type:'STOP'});
+  await r.h.step();await r.h.step();assert.equal(r.counts().opens,0);assert.equal(r.counts().seeks,0);r.h.close();
+});
+
+test('normal video playback never seeks before a confirmed wrong answer',async()=>{
+  const h=await setup(`${reviewMenu()}<div class="slide"><video></video></div><input type="range" data-ref="progressBar" max="100000" value="15000" disabled>`);
+  Object.defineProperty(h.doc.querySelector('video'),'duration',{value:100});
+  let seeks=0;h.doc.querySelector('[data-ref="progressBar"]').onchange=()=>seeks++;
+  for(let i=0;i<5;i++)await h.step();
+  assert.equal(seeks,0);assert.equal(h.doc.querySelector('[data-ref="progressBar"]').value,'15000');h.close();
+});
+
+test('identical questions in different menu entries do not inherit each other’s wrong answers',async()=>{
+  const requests=[];
+  const h=await setup(`${reviewMenu()}<div class="slide">${quiz()}</div>`,async q=>{requests.push(JSON.parse(JSON.stringify(q)));return {answers:[requests.length===2?1:0]};});
+  h.doc.addEventListener('click',e=>{
+    const slide=h.doc.querySelector('.slide');
+    if(e.target.id==='submit')slide.innerHTML=requests.length===1?'<p>Sai</p><button id="retry">Thử lại</button>':'<p>Chính xác</p><button id="continue">Tiếp tục</button>';
+    else if(e.target.id==='retry')slide.innerHTML=quiz();
+    else if(e.target.id==='continue'){
+      h.doc.querySelector('.cs-selected').classList.remove('cs-selected');
+      h.doc.querySelector('[data-ref="review1"]').classList.add('cs-selected');
+      h.doc.getElementById('slide-label').textContent='slide: Câu hỏi ôn tập 1';
+      slide.outerHTML=`<div class="slide" id="another-slide">${quiz()}</div>`;
+    }
+  });
+  for(let i=0;i<20&&requests.length<3;i++)await h.step();
+  assert.equal(requests.length,3);assert.equal(requests[1].history.length,1);assert.deepEqual(requests[2].history,[]);h.close();
+});
 test('observed Storyline 28700/28757 at step 100 and reported 100% is complete',()=>{
   assert.deepEqual(core.rangeProgress('28700',0,'28757','100',true),{value:1,done:true});
   assert.equal(core.rangeProgress('28600',0,'28757','100',true).done,false);

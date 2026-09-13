@@ -2,7 +2,7 @@
   if (globalThis.__lessonAssistant) return;
   const C = globalThis.LessonCore;
   const S = {running: false, playbackOnly: false, session: '', config: C.defaults, timer: null, busy: false, generation: 0,
-    key: '', stable: '', stableAt: 0, endAt: 0, action: null, quiz: null, reviewReturn: null, histories: new Map(), lastStatus: ''};
+    key: '', stable: '', stableAt: 0, endAt: 0, action: null, quiz: null, reviewReturn: null, videoReturn: null, lastVideo: null, histories: new Map(), lastStatus: ''};
   let playbackState = {active: false, clock: 'unavailable'};
   let lastPlaybackStatus = '';
   function playback(on) {
@@ -99,7 +99,7 @@
     if (typeof el.click === 'function') el.click();
     else el.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}));
   }
-  function currentReview() {
+  function currentSlide() {
     const items = query('.cs-listitem[data-slide-title][data-ref]');
     const label = C.normalize(document.getElementById('slide-label')?.textContent).replace(/^slide:\s*/, '');
     const selectedItems = items.filter(el => el.classList.contains('cs-selected') || el.getAttribute('aria-current') === 'true' || el.closest('[aria-selected="true"]'));
@@ -107,8 +107,12 @@
     if (candidates.length !== 1) return null;
     const el = candidates[0], title = el.getAttribute('data-slide-title'), ref = el.getAttribute('data-ref');
     const normalized = C.normalize(title);
-    if (!/^cau hoi on tap(?:\b|$)/.test(normalized) || label && label !== normalized) return null;
+    if (label && label !== normalized) return null;
     return {ref, title};
+  }
+  function currentReview() {
+    const slide = currentSlide();
+    return slide && /^cau hoi on tap(?:\b|$)/.test(C.normalize(slide.title)) ? slide : null;
   }
   function reviewItem(target) {
     const matches = query('.cs-listitem[data-slide-title][data-ref]').filter(el =>
@@ -154,6 +158,58 @@
     route.phase = 'opening';
     click(item); setStatus(`Đã chọn lại ${route.target.title}, không chờ video trước đó.`); return true;
   }
+  function retryVideoTarget(root) {
+    if (currentReview()) return null;
+    const current = currentSlide();
+    if (!current) return null;
+    if (S.lastVideo?.ref === current.ref) return {...S.lastVideo};
+    // Starting on a question can still identify its video when both belong to
+    // the current menu item. Never guess a previous, unrelated menu entry.
+    return query('video', root).some(v => visible(v) && Number.isFinite(v.duration) && v.duration > 0) ? current : null;
+  }
+  function returnToVideo(snap, now) {
+    const route = S.videoReturn;
+    if (!route) return false;
+    if (now - route.at > 20000) { halt('Không xác nhận được video cần xem lại hoặc thao tác tua 98%. Hãy kiểm tra bài học.'); return true; }
+    if (now - route.at < S.config.settleMs || feedback('incorrect') || feedback('correct')) return true;
+    const current = currentSlide();
+    if (current?.ref !== route.target.ref) {
+      if (route.phase === 'opening') return true;
+      const item = reviewItem(route.target);
+      if (!item || !visible(item)) {
+        const toggle = document.getElementById('hamburger');
+        if (!route.openedSidebar && toggle?.getAttribute('aria-expanded') === 'false' && enabled(toggle)) {
+          route.openedSidebar = true; click(toggle);
+        }
+        setStatus('Đợi mục video của câu hỏi xuất hiện trong mục lục.'); return true;
+      }
+      if (!item || !reviewUnlocked(item)) { setStatus('Đợi mục video của câu hỏi được mở khóa để xem lại.'); return true; }
+      route.phase = 'opening'; click(item); setStatus(`Đang quay lại ${route.target.title}.`); return true;
+    }
+    if (snap.q && !snap.q.error) { S.videoReturn = null; return false; }
+    const media = query('video', snap.root).filter(visible).filter(v => Number.isFinite(v.duration) && v.duration > 0);
+    if (!media.length || !snap.p.present || snap.p.value == null) { setStatus('Đợi đúng video và thanh thời gian sẵn sàng trước khi tua.'); return true; }
+    if (route.phase === 'seeked') {
+      // The player's media must also move: a changed slider value alone is not
+      // evidence that Storyline accepted the seek.
+      if (media.every(v => v.currentTime / v.duration >= 0.96) && snap.p.value >= 0.96) {
+        S.videoReturn = null; S.quiz = null; S.action = null;
+        setStatus('Đã tua video xem lại khoảng 98%; đợi phần cuối và câu hỏi hiện đủ.'); return false;
+      }
+      setStatus('Đã yêu cầu tua 98%; đợi trình phát xác nhận.'); return true;
+    }
+    if (snap.p.value >= 0.98) { S.videoReturn = null; return false; }
+    const bars = query('input[data-ref="progressBar"], input[type="range"][aria-label="tiến trình slide"]').filter(visible);
+    if (bars.length !== 1) { setStatus('Chưa xác định được thanh thời gian Storyline để tua video xem lại.'); return true; }
+    const bar = bars[0], min = Number(bar.min || 0), max = Number(bar.max);
+    if (!Number.isFinite(max) || max <= min) return true;
+    route.phase = 'seeked';
+    // Storyline's own change handler calls currTimeline.progress(value/max).
+    // Do not change disabled flags, completion state, or the media clock directly.
+    bar.value = String(min + (max-min)*0.98);
+    bar.dispatchEvent(new Event('change', {bubbles:true}));
+    setStatus('Đã yêu cầu tua video xem lại khoảng 98%.'); return true;
+  }
   function progress() {
     const custom = S.config.selectors;
     const selector = custom.progress || 'input[data-ref="progressBar"], input[type="range"][aria-label="tiến trình slide"], .seekbar [role="slider"], #seekbar [role="slider"], .seekbar, #seekbar, [data-lesson-progress], progress, [role="progressbar"], [role="slider"][aria-label*="seek" i], [role="slider"][aria-label*="tiến" i], [role="slider"][aria-label*="thời gian" i]';
@@ -198,7 +254,9 @@
     if (groups.size > 1) return {error: 'Có nhiều nhóm câu hỏi trên cùng slide. Cần cấu hình vùng câu hỏi riêng.'};
     const options = choices.map(text);
     const questionNode = query(custom.question || '[data-question], .question-text, .question, legend, [role="heading"]', root).find(visible);
-    const questionText = questionNode ? visibleText(questionNode) || text(questionNode) : visibleText(root);
+    const accessibleText = query('.acc-text', root).filter(visible).map(text).filter(value =>
+      value.length > 10 && !/^(rectangle|oval|line|text box)\s*\d*$/i.test(value) && !options.some(option => C.answerIdentity(option) === C.answerIdentity(value)));
+    const questionText = questionNode ? visibleText(questionNode) || text(questionNode) : accessibleText.length ? [...new Set(accessibleText)].join(' ') : visibleText(root);
     const multiple = choices.some(el => el.matches('[type="checkbox"], [role="checkbox"]'));
     if (choices.length < 2 || options.some(t => !t) || !questionText) return {error: 'Câu hỏi chưa hiện đầy đủ hoặc đáp án là hình ảnh. Cần xuất chẩn đoán để bổ sung nhận diện.'};
     return {text: questionText, options, choices, multiple, key: C.questionKey(questionText, options, multiple)};
@@ -219,6 +277,7 @@
   function stopLocal(keepPlayback = false) {
     S.running = false; S.playbackOnly = false; S.generation++; clearInterval(S.timer); S.timer = null;
     S.reviewReturn = null;
+    S.videoReturn = null;
     if (!keepPlayback) playback(false);
   }
   function resetSlide(key) {
@@ -250,6 +309,11 @@
       // A changed DOM root or explicit slide id is a definite navigation.
       if (S.root !== snap.root || S.key !== rootId) { S.root = snap.root; resetSlide(rootId); }
       if (returnToReview(snap, now)) return;
+      if (returnToVideo(snap, now)) return;
+      if (!snap.q && !snap.complete && !feedback('incorrect') && !feedback('correct') && !currentReview() &&
+          query('video', snap.root).some(v => visible(v) && Number.isFinite(v.duration) && v.duration > 0)) {
+        const item = currentSlide(); if (item) S.lastVideo = item;
+      }
       const fp = snap.q && !snap.q.error ? snap.q.key : snap.signature;
       if (S.stable !== fp) { S.stable = fp; S.stableAt = now; }
       if (snap.p.done) { if (!S.endAt) S.endAt = now; } else S.endAt = 0;
@@ -331,12 +395,14 @@
           const last = S.quiz.history[S.quiz.history.length - 1];
           last.feedback = wrong;
           last.confirmedWrong = true;
+          S.histories.set(S.quiz.historyKey, S.quiz.history);
           const remaining = C.remainingSingleAnswer(S.quiz.count, S.quiz.multiple, S.quiz.history);
           if (S.quiz.history.length >= S.config.maxAttempts && remaining === null) { halt('Đã đạt giới hạn số lần trả lời câu này; chưa xác định được một đáp án còn lại.'); return; }
           const retry = button('retry');
           if (!retry) { setStatus('Đáp án sai; đợi nút Thử lại. Không tự gửi lại khi bài chưa cho phép.'); return; }
           const target = S.quiz.review;
           if (target) S.reviewReturn = {target, at: now, phase: 'retry'};
+          else if (S.quiz.videoTarget) S.videoReturn = {target: S.quiz.videoTarget, at: now, phase: 'retry'};
           click(retry); S.quiz.phase = 'retry'; S.quiz.at = now; setStatus('Đã bấm Thử lại; chờ câu hỏi hiện lại.'); return;
         }
         // Some explanation videos reveal their Continue button only at the end.
@@ -372,8 +438,9 @@
         if (snap.q.error) { setStatus(snap.q.error); return; }
         if (!button('submit', true)) { setStatus('Đã thấy câu hỏi; đợi nút Gửi đáp án.'); return; }
         if (!S.quiz || S.quiz.key !== snap.q.key) {
-          if (!S.histories.has(snap.q.key)) S.histories.set(snap.q.key, []);
-          S.quiz = {key: snap.q.key, count: snap.q.options.length, multiple: snap.q.multiple, history: S.histories.get(snap.q.key), phase: 'ready', review: currentReview()};
+          const historyKey = JSON.stringify([currentSlide()?.ref || '', C.historyKey(snap.q.text, snap.q.options, snap.q.multiple)]);
+          const history = C.remapHistory(S.histories.get(historyKey) || [], snap.q.options);
+          S.quiz = {key: snap.q.key, historyKey, count: snap.q.options.length, multiple: snap.q.multiple, history, phase: 'ready', review: currentReview(), videoTarget: retryVideoTarget(snap.root)};
           S.quiz.archiveQuestion = {text: snap.q.text, options: [...snap.q.options], multiple: snap.q.multiple};
           S.quiz.archiveContext = globalThis.SuiteCapture?.context('SCORM');
           if (S.quiz.archiveContext) S.quiz.archiveContext.attempt = S.session;
@@ -382,6 +449,9 @@
         }
         const quiz = S.quiz;
         if (quiz.phase === 'ready') {
+          if (quiz.history.length && new Set(snap.q.options.map(C.answerIdentity)).size !== snap.q.options.length) {
+            throw new Error('Các lựa chọn có nội dung trùng nhau; không đủ dữ liệu để loại đáp án đã sai.');
+          }
           const remaining = C.remainingSingleAnswer(snap.q.options.length, snap.q.multiple, quiz.history);
           let response;
           if (remaining !== null) {
@@ -397,8 +467,15 @@
           if (response.error) throw new Error(response.error);
           const fresh = snapshot();
           if (fresh.root !== snap.root || fresh.q?.key !== snap.q.key || (fresh.p.present && !fresh.p.done)) { S.quiz = null; setStatus('Câu hỏi hoặc tiến trình đã đổi; bỏ kết quả cũ của AI.'); return; }
-          const chosen = C.validateAnswer({answers: response.answers?.map(x => x + 1)}, fresh.q.options.length, fresh.q.multiple);
-          if (quiz.history.some(h => JSON.stringify(h.answers) === JSON.stringify(chosen.map(x => x + 1)))) throw new Error('AI chọn lại đáp án đã sai. Đã dừng để tránh gửi lặp.');
+          let chosen = C.validateAnswer({answers: response.answers?.map(x => x + 1)}, fresh.q.options.length, fresh.q.multiple);
+          if (quiz.history.some(h => h.confirmedWrong && JSON.stringify(h.answers) === JSON.stringify(chosen.map(x => x + 1)))) {
+            if (fresh.q.multiple) throw new Error('AI chọn lại tổ hợp đã sai; chưa có tổ hợp mới để gửi.');
+            const wrong = new Set(quiz.history.filter(h=>h.confirmedWrong && h.answers.length===1).map(h=>h.answers[0]-1));
+            const alternative = fresh.q.options.findIndex((_,index)=>!wrong.has(index));
+            if (alternative < 0) throw new Error('Tất cả lựa chọn đã bị bài học chấm sai. Cần kiểm tra lại câu hỏi.');
+            chosen = [alternative];
+            response.reason = 'AI lặp đáp án đã sai. Thử một lựa chọn chưa bị bài học loại; chưa coi đây là đáp án đúng.';
+          }
           // Toggle only mismatched controls, then verify on a later tick before submission.
           fresh.q.choices.forEach((el, index) => {
             const want = chosen.includes(index);
@@ -418,7 +495,8 @@
           await archive(quiz, 'submitted');
           if (!S.running || generation !== S.generation || !submit.isConnected) return;
           quiz.phase = 'submitted'; quiz.at = now;
-          quiz.history.push({answers: quiz.answers.map(x => x + 1), feedback: ''});
+          quiz.history.push({answers: quiz.answers.map(x => x + 1), answerTexts: quiz.answers.map(x => C.answerIdentity(quiz.archiveQuestion.options[x])), feedback: ''});
+          S.histories.set(quiz.historyKey, quiz.history);
           click(submit); setStatus('Đã gửi đáp án; đợi kết quả.'); return;
         }
         return;
@@ -435,7 +513,7 @@
   }
   function start(run, playbackOnly = false) {
     stopLocal(S.running && S.playbackOnly && S.session === run.session);
-    S.session = run.session; S.config = run.config; S.running = true; S.playbackOnly = playbackOnly; S.lastStatus = ''; S.root = null; S.quiz = null; S.histories.clear();
+    S.session = run.session; S.config = run.config; S.running = true; S.playbackOnly = playbackOnly; S.lastStatus = ''; S.root = null; S.quiz = null; S.lastVideo = null; S.histories.clear();
     playback(S.config.backgroundPlayback !== false);
     resetSlide(''); S.timer = setInterval(tick, 350); tick();
   }
@@ -450,6 +528,7 @@
     return {origin: location.origin, title: document.title, root: snap.root ? describe(snap.root) : null,
       text: snap.root ? visibleText(snap.root) : '', progress: snap.p, backgroundPlayback: playbackState,
       review: currentReview(), reviewReturn: S.reviewReturn ? {target: S.reviewReturn.target, phase: S.reviewReturn.phase} : null,
+      videoReturn: S.videoReturn ? {target:S.videoReturn.target,phase:S.videoReturn.phase} : null,
       controls: query('button, [role="button"], [role="radio"], [role="checkbox"], input, [role="slider"], [role="progressbar"], .seekbar, #seekbar').filter(visible).map(describe),
       question: snap.q ? {text: snap.q.text, options: snap.q.options, error: snap.q.error} : null};
   }

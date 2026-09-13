@@ -41,6 +41,23 @@
     return {value: done && reportedComplete ? 1 : value, done};
   }
   function questionKey(text, options, multiple) { return JSON.stringify([normalize(text), options.map(normalize), !!multiple]); }
+  const answerIdentity = value => String(value || '').normalize('NFC').replace(/\s+/g, ' ').trim();
+  function historyKey(text, options, multiple) {
+    const values = options.map(answerIdentity);
+    // Duplicate labels cannot be safely remapped by text.
+    return JSON.stringify([answerIdentity(text), new Set(values).size === values.length ? [...values].sort() : values, !!multiple]);
+  }
+  function remapHistory(history, options) {
+    const values = options.map(answerIdentity);
+    return history.flatMap(entry => {
+      if (!entry.answerTexts?.length) return [];
+      const answers = entry.answerTexts.map(value => values.indexOf(value) + 1).sort((a,b) => a-b);
+      if (answers.some(n => n < 1) || entry.answerTexts.some(value => values.filter(v => v === value).length !== 1)) {
+        throw new Error('Không đối chiếu được đáp án đã thử với các lựa chọn hiện tại; đã dừng để tránh gửi lặp.');
+      }
+      return [{...entry, answers}];
+    });
+  }
   function remainingSingleAnswer(count, multiple, history) {
     if (multiple || !Number.isInteger(count) || count < 2) return null;
     const wrong = new Set(history.filter(h => h.confirmedWrong === true && h.answers?.length === 1)
@@ -49,7 +66,7 @@
     return remaining.length === 1 ? remaining[0] : null;
   }
   function completion(text) { return /\b(hoan thanh bai hoc|da hoan thanh (bai hoc|khoa hoc)|bai hoc da hoan thanh|ket thuc bai hoc|lesson complete|course complete|you have completed)\b/.test(normalize(text)); }
-  const api = {normalize, defaults, validateQuestion, providerName, validateAnswer, ratio, rangeProgress, questionKey, remainingSingleAnswer, completion};
+  const api = {normalize, defaults, validateQuestion, providerName, validateAnswer, ratio, rangeProgress, questionKey, answerIdentity, historyKey, remapHistory, remainingSingleAnswer, completion};
   scope.LessonCore = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(globalThis);
