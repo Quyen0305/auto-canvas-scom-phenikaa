@@ -144,14 +144,15 @@ test('continue waits for enabled state and unknown timeline never permits leavin
   b.disabled=false;await h.step();await h.step();assert.equal(clicks,1);h.close();
 });
 
-test('wrong feedback takes precedence over Continue on a result screen', async()=>{
+test('Continue on an explicitly wrong result acts as retry and never records success', async()=>{
   const h=await setup(`<div class="slide">${quiz()}</div>`);
   let clicks=0;
   h.doc.querySelector('#submit').onclick=()=>{
     h.doc.querySelector('.slide').innerHTML='<p>Không đúng. Hãy thử lại.</p><button>TIẾP TỤC HỌC</button>';
     h.doc.querySelector('button').onclick=()=>clicks++;
   };
-  await h.step();await h.step();await h.step();await h.step();assert.equal(clicks,0);h.close();
+  await h.step();await h.step();await h.step();await h.step();assert.equal(clicks,1);
+  assert.equal(h.messages.some(m=>m.type==='COMPLETE'),false);h.close();
 });
 
 test('Continue shown beside an unanswered question is not clicked', async()=>{
@@ -291,7 +292,7 @@ test('video result from screenshot clicks HOC LAI once even when no quiz was sub
   h.doc.querySelector('#next').onclick=()=>next++;
   await h.step();await h.step();await h.step();
   assert.equal(retries,1);assert.equal(next,0);assert.equal(h.messages.some(m=>m.type==='SOLVE'),false);
-  await h.step(16000);assert.equal(retries,1);assert.match(h.messages.find(m=>m.type==='PAUSE').text,/Học lại.*chưa đóng/);h.close();
+  await h.step(16000);assert.equal(retries,1);assert.match(h.messages.find(m=>m.type==='PAUSE').text,/xem lại.*chưa đóng/);h.close();
 });
 
 test('untracked wrong feedback waits for a visible enabled retry button then resumes the replay',async()=>{
@@ -498,7 +499,7 @@ test('choice order changing while AI is running discards its old positional answ
   assert.equal([...h.doc.querySelectorAll('input')].some(x=>x.checked),false);h.close();
 });
 
-async function videoRetryFixture({acceptSeek=true,review=false,locked=false,startOnQuestion=false}={}) {
+async function videoRetryFixture({acceptSeek=true,review=false,locked=false,startOnQuestion=false,startOnWrong=false,retryLabel='Học lại'}={}) {
   const h=await setup(`${reviewMenu()}<div class="slide"></div><input data-ref="progressBar" type="range" max="100000" value="10000" disabled><button id="next">Tiếp theo</button>`);
   const slide=h.doc.querySelector('.slide'),range=h.doc.querySelector('[data-ref="progressBar"]');
   let seeks=0,opens=0,next=0,retries=0;
@@ -512,11 +513,12 @@ async function videoRetryFixture({acceptSeek=true,review=false,locked=false,star
     slide.querySelector('video').currentTime=10;
   };
   select(review?'review2':'video');
-  if(startOnQuestion) {video();slide.insertAdjacentHTML('beforeend',quiz());range.value='100000';}
+  if(startOnWrong) {slide.innerHTML=`<p>Rất tiếc, em đã trả lời sai.</p><button id="retry">${retryLabel}</button>`;range.value='100000';}
+  else if(startOnQuestion) {video();slide.insertAdjacentHTML('beforeend',quiz());range.value='100000';}
   else {video();await h.step();slide.innerHTML=quiz();range.value='100000';}
   range.addEventListener('change',()=>{seeks++;if(acceptSeek&&slide.querySelector('video'))slide.querySelector('video').currentTime=Number(range.value)/1000;});
   h.doc.addEventListener('click',e=>{
-    if(e.target.id==='submit')slide.innerHTML='<p>Sai</p><button id="retry">Học lại</button>';
+    if(e.target.id==='submit')slide.innerHTML=`<p>Sai</p><button id="retry">${retryLabel}</button>`;
     else if(e.target.id==='retry') {retries++;select('review1');video();}
     else if(e.target.dataset.ref===(review?'review2':'video')) {opens++;select(e.target.dataset.ref);if(review){slide.innerHTML=quiz();range.value='100000';}else video();}
     else if(e.target.id==='next')next++;
@@ -541,6 +543,37 @@ test('wrong video answer returns to exact video and seeks 98% using the player c
 test('starting on a question with its visible video also captures the retry target',async()=>{
   const r=await videoRetryFixture({startOnQuestion:true});
   await r.h.step();await r.h.step();await r.h.step();assert.equal(r.counts().seeks,1);r.h.close();
+});
+
+for(const retryLabel of ['TIẾP TỤC HỌC','HỌC LẠI']) for(const startOnWrong of [false,true]) {
+  test(`${retryLabel}: ${startOnWrong?'starting on wrong result':'submitted wrong answer'} returns through intro to saved menu video and seeks 98%`,async()=>{
+    const r=await videoRetryFixture({retryLabel,startOnWrong});
+    assert.equal(r.h.doc.querySelector('.cs-selected').dataset.ref,'review1');
+    assert.equal(r.counts().seeks,0);
+    await r.h.step();
+    assert.equal(r.h.doc.querySelector('.cs-selected').dataset.ref,'video');
+    assert.equal(r.counts().seeks,0);
+    await r.h.step();await r.h.step();
+    assert.deepEqual(r.counts(),{seeks:1,opens:1,next:0,retries:1});
+    assert.equal(r.range.value,'98000');assert.equal(r.slide.querySelector('video').currentTime,98);
+    assert.equal(r.h.w.__lessonAssistant.diagnose().videoReturn,null);
+    if(startOnWrong)assert.equal(r.h.messages.some(m=>m.type==='SOLVE'),false);
+    assert.equal(r.h.messages.some(m=>m.type==='COMPLETE'),false);r.h.close();
+  });
+}
+
+test('review wrong-result Continue alias still returns directly to the review without seeking',async()=>{
+  const r=await videoRetryFixture({review:true,startOnWrong:true,retryLabel:'TIẾP TỤC HỌC'});
+  await r.h.step();await r.h.step();
+  assert.equal(r.counts().retries,1);assert.equal(r.counts().opens,1);assert.equal(r.counts().seeks,0);
+  assert.equal(r.h.doc.querySelector('.cs-selected').dataset.ref,'review2');r.h.close();
+});
+
+test('wrong-result Continue alias waits until enabled and is clicked once',async()=>{
+  const h=await setup('<div class="slide"><p>Rất tiếc, em đã trả lời sai.</p><button id="continue" disabled>TIẾP TỤC HỌC</button></div>');
+  let clicks=0;const button=h.doc.querySelector('#continue');button.onclick=()=>clicks++;
+  await h.step();await h.step();assert.equal(clicks,0);
+  button.disabled=false;await h.step();await h.step();assert.equal(clicks,1);h.close();
 });
 
 test('a slider change without actual media movement does not confirm the seek',async()=>{
