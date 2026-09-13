@@ -1,4 +1,7 @@
 (() => {
+  // Old ai.html tabs can remain open across an update. They must not create a
+  // second engine or take ownership of the hidden host's port.
+  if (window.parent === window) return;
   const engine = new LessonBuiltin.Engine();
   const jobs = new Map();
   const status = document.getElementById('ai-status');
@@ -10,7 +13,8 @@
   }
   function cancelAll() { for (const controller of jobs.values()) controller.abort(); }
   function connect() {
-    if (closing) return;
+    if (closing || port) return;
+    clearTimeout(reconnect);
     try {
       const channel = chrome.runtime.connect({name: 'lesson-builtin-ai'}); port = channel;
       channel.onMessage.addListener(async message => {
@@ -60,6 +64,11 @@
     finally { if (!closing) announce(); }
   }
   window.addEventListener('pagehide', () => { closing = true; clearTimeout(reconnect); cancelAll(); engine.destroy(); port?.disconnect(); });
+  window.LessonAIHostReconnect = () => {
+    connect();
+    announce();
+    prepareAI();
+  };
   connect();
   prepareAI();
   // A live extension page hosts Prompt API; it is unavailable in service workers.

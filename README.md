@@ -1,68 +1,222 @@
 # Auto Canvas SCOM Phenikaa
 
-Chrome extension kết hợp hỗ trợ trắc nghiệm Canvas và bài học SCORM cho Phenikaa. Phiên bản hiện tại: **2.2.2**. Một popup dùng chung lựa chọn AI và chức năng xuất câu hỏi Excel.
+Tiện ích Chrome hỗ trợ trắc nghiệm Canvas, theo dõi bài học SCORM và xuất câu hỏi đã có đáp án đúng ra Excel. Phiên bản hiện tại: **2.2.3**.
 
-## Cài đặt
+Tên repository giữ chữ `scom`; tên kỹ thuật của định dạng bài học là **SCORM**. Khi cài vào Chrome, tiện ích hiển thị tên **Trợ lý học tập · Canvas & SCORM**.
 
-1. Tải mã nguồn bằng **Code → Download ZIP** trên GitHub rồi giải nén, hoặc clone repository.
-2. Mở `chrome://extensions`, bật **Developer mode / Chế độ dành cho nhà phát triển**.
-3. Chọn **Load unpacked / Tải tiện ích đã giải nén**, trỏ tới thư mục **extension** trong mã nguồn.
-4. Mở lại hoặc F5 trang Canvas/SCORM, sau đó mở popup tiện ích.
+[Cài đặt](#1-cài-đặt) · [Chọn AI](#2-chọn-ai) · [Sử dụng](#3-sử-dụng) · [Xuất Excel](#4-xuất-câu-hỏi-excel) · [Xử lý lỗi](#6-xử-lý-lỗi-thường-gặp)
 
-Khi cập nhật, thay mã nguồn trong cùng thư mục đã cài, bấm **Tải lại** trên trang quản lý tiện ích và F5 trang học để giữ cấu hình cùng kho câu hỏi đã lưu.
+## 1. Cài đặt
 
-## Cách dùng
+Bạn cần Chrome trên máy tính và tài khoản đã đăng nhập vào trang học. Manifest cho phép cài từ Chrome 120; **Chrome AI có thêm yêu cầu riêng về trình duyệt và phần cứng**. Cài được tiện ích chưa có nghĩa là dùng được AI trên máy.
 
-1. Mở popup tiện ích trên trang Canvas hoặc SCORM.
-2. F5 trang SCORM và Canvas để nhận bản mới. Giữ extension Canvas riêng ở trạng thái tắt để tránh chạy trùng.
-3. Chọn **mô hình AI** ngay trong popup. Danh sách dùng chung: Gemini 2.5 Flash, Gemini 3.7 Flash (`gemini-3.7-flash`), Gemini 1.5 Flash, Gemini 2.0 Flash và Chrome AI. Model cũ đã lưu ngoài danh sách vẫn được giữ để chọn; tính khả dụng do nhà cung cấp quyết định.
-4. Nếu chọn Gemini, nhập API key rồi rời ô nhập hoặc bấm nút chạy. Tiện ích tự lưu; ô trống giữ nguyên key đã có. Key được ẩn sau khi lưu.
-5. **SCORM:** Bắt đầu / Dừng. **Canvas:** Tự động làm / Làm đến 10 điểm / Dừng, trong popup hoặc widget trên trang.
+**Không cần cài Node.js hoặc chạy lệnh để sử dụng tiện ích.**
 
-Popup tự chọn SCORM hoặc Canvas theo trang đang mở. Có thể chuyển thẻ mà không đổi lựa chọn AI. Không cần nút Lưu, Kiểm tra, Mở Chrome AI hay trang Cài đặt thứ hai.
+1. Trên trang repository, chọn **Code → Download ZIP**.
+2. Giải nén vào một thư mục cố định trên máy.
+3. Mở `chrome://extensions` trong thanh địa chỉ Chrome.
+4. Bật **Developer mode / Chế độ dành cho nhà phát triển**.
+5. Bấm **Load unpacked / Tải tiện ích đã giải nén**.
+6. Chọn thư mục **`extension`**, là thư mục chứa `manifest.json`. Không chọn file ZIP hoặc thư mục ngoài cùng của repository.
+7. Bấm biểu tượng mảnh ghép trên thanh công cụ Chrome và ghim **Trợ lý học tập · Canvas & SCORM** để dễ mở.
+8. Mở lại hoặc nhấn **F5** ở trang Canvas/SCORM đang dùng. Nếu còn bật tiện ích Canvas cũ riêng lẻ, hãy tắt nó để tránh hai tiện ích cùng thao tác.
 
-## Các mặc định tự động
+Thư mục cần chọn:
 
-- SCORM bật giữ bài học chạy khi chuyển tab trong mỗi lần Bắt đầu. Vẫn đợi timeline thật kết thúc, tôn trọng điểm dừng câu hỏi và dừng khi hoàn thành bài học.
-- Canvas bật tự chọn đáp án hợp lệ và tự chuyển câu. Các cờ cũ từng tắt được đưa về bật khi đọc cấu hình. Chế độ tự động chỉ chạy sau khi bạn yêu cầu; bật mặc định không tự khởi chạy bài.
-- Làm đến 10 điểm giữ nguyên kiểm tra dữ liệu chấm, giới hạn quyền làm lại của bài, sao lưu câu trả lời trước điều hướng và nút Dừng.
-- Ẩn checkbox và công cụ phụ khỏi UI. Widget Canvas giữ Tự động làm, Làm đến 10 điểm, Dừng và kết quả.
+```text
+auto-canvas-scom-phenikaa-main/
+├── README.md
+├── extension/                 ← Chọn thư mục này
+│   ├── manifest.json
+│   └── ...
+└── tests/
+```
 
-## AI và dữ liệu chung
+Đây là cách cài mã nguồn chưa đóng gói. Có thể đối chiếu với [hướng dẫn Load unpacked của Chrome](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world#load-unpacked).
 
-Mô hình, nguồn AI và API key dùng chung cho Canvas và SCORM. Lần nâng cấp đầu ưu tiên cấu hình Canvas trong bản hợp nhất; nếu không có thì dùng cấu hình SCORM. Nếu hai key khác nhau, giữ bản sao key SCORM cũ trong bộ nhớ extension để có thể khôi phục, không hiển thị key trên UI hoặc đóng gói key vào ZIP.
+## 2. Chọn AI
 
-Cache, lịch sử chấm và trạng thái chạy vẫn tách riêng giữa hai công cụ. Thay model không xóa lịch sử. Các thay đổi nguồn AI nên dùng từ lần bắt đầu tiếp theo; yêu cầu AI đang chạy giữ cơ chế hủy/xác thực riêng của từng phần.
+Bấm biểu tượng tiện ích để mở cửa sổ điều khiển, gọi là **popup**. Mục **Mô hình AI** dùng chung cho cả Canvas và SCORM. Cấu hình được tự lưu, không có trang cài đặt riêng.
 
-Chrome AI được tự chuẩn bị khi chọn hoặc bấm bắt đầu. Lần tải đầu cần giữ popup mở tới khi hoàn tất vì Chrome yêu cầu thao tác trong trang khởi tạo. Nếu đóng popup trong lúc tải, mở lại và chọn/bắt đầu để thử lại. Khi đã sẵn sàng, tab AI nền duy trì phiên xử lý. Không tự chuyển sang Gemini API khi Chrome AI lỗi.
+| Lựa chọn | Cách xử lý câu hỏi | Cần chuẩn bị |
+| --- | --- | --- |
+| Gemini API | Gửi nội dung câu hỏi và lựa chọn tới Gemini API của Google | API key hợp lệ, mạng và hạn mức cho model đã chọn |
+| Chrome AI · Gemini Nano trên máy | Chạy mô hình qua API AI tích hợp của Chrome | Trình duyệt/phần cứng hỗ trợ; tải mô hình và bộ dịch cần thiết |
 
-## Lưu và xuất câu hỏi Excel
+### Dùng Gemini API
 
-Kho câu hỏi được lưu tự động trên máy, riêng với cache AI. Giữ tất cả lượt đã thu thập, không tự xóa theo thời hạn cache. Quyền `unlimitedStorage` dành cho kho lịch sử; gỡ extension hoặc xóa dữ liệu extension vẫn làm mất kho, nên xuất định kỳ để sao lưu.
+1. Tạo hoặc lấy API key theo [hướng dẫn Gemini API của Google](https://ai.google.dev/gemini-api/docs/api-key).
+2. Trong popup, chọn một model Gemini mà project của bạn có quyền sử dụng.
+3. Dán key vào ô **Gemini API key**.
+4. Bấm ra ngoài ô nhập hoặc bấm nút chạy. Khi hiện **Đã lưu key**, bạn có thể sử dụng.
 
-- **Canvas:** lưu câu hỏi và lựa chọn trên các trang đã mở, cả thao tác thủ công. Trang kết quả bổ sung điểm chấm và đáp án đúng nếu Canvas công khai. Tiện ích đọc các liên kết lịch sử của chính bài đó để gom các lượt cũ còn được phép xem; không nộp bài hay điều hướng trong quá trình thu thập.
-- **SCORM:** khi chạy Bắt đầu, lưu nội dung câu hỏi, các lựa chọn, đáp án đã gửi và phản hồi đúng/sai trước khi bấm Tiếp tục hoặc Học lại. Không suy ra “đúng” chỉ vì nút Tiếp tục xuất hiện.
-- Bấm **Xuất câu hỏi Excel**, giữ popup mở đến khi tải xuống. Tiện ích gom thêm dữ liệu ở các tab Canvas đang mở rồi tạo một ZIP: mỗi thư mục là một học phần, mỗi XLSX là một bài tập. Dùng tên hiển thị khi đọc được; nếu thiếu tên sẽ giữ mã/nhóm học phần riêng, không trộn các bài khác nhau.
-- Sheet **Create a Quiz** giữ đúng 11 cột và hàng hướng dẫn của `QuizizzSampleSpreadsheetUpdated_v2.xlsx`. Đáp án đúng dùng số bắt đầu từ 1; nhiều đáp án dùng dạng `1,3`. Cột thời gian và ảnh để trống nếu chưa thu thập được.
-- File xuất chỉ chứa câu có đáp án đã được bài chấm đúng. Không xuất sheet lịch sử, các lượt chọn sai hay dự đoán AI. Lịch sử vẫn lưu bên trong extension để đối chiếu. Câu trên 5 lựa chọn có đáp án đúng được giữ đủ trong sheet **Câu trên 5 lựa chọn**, vì mẫu Quizizz chỉ có 5 cột đáp án.
-- Gộp câu trùng trong cùng bài tập theo nội dung và tập lựa chọn, kể cả khi đảo thứ tự đáp án. Các câu có bộ lựa chọn khác nhau hoặc thuộc bài tập khác được giữ riêng. Không bỏ dấu tiếng Việt để so trùng.
-- Chỉ xuất khi có bằng chứng chấm đúng và không mâu thuẫn. Câu chỉ có dự đoán AI, chưa chấm, hoặc có kết quả mâu thuẫn được bỏ qua hoàn toàn khi xuất. Nếu không có câu đạt điều kiện thì không tạo file. Các lựa chọn gốc của câu trắc nghiệm vẫn được giữ; Correct Answer chỉ đánh dấu đáp án đã xác nhận đúng.
-- Popup đọc trực tiếp kho lưu sau khi đợi thu thập Canvas hoàn tất, không truyền toàn bộ lịch sử qua phản hồi của worker. Nếu chưa có dữ liệu và tab không kết nối được, thông báo yêu cầu tải lại tiện ích và F5 trang kết quả. Canvas ẩn đáp án đúng vẫn có thể xác nhận lựa chọn đã chọn khi câu đó được chấm đủ điểm, ví dụ 0,6/0,6; không suy ra từ tổng điểm cả bài.
+Sau khi lưu, ô nhập được làm trống để che key. **Ô trống không có nghĩa là key đã bị xóa**; muốn thay key, nhập key mới vào cùng ô.
 
-**Lịch sử trước 2.2.0:** cache cũ chỉ giữ hash và đáp án, không đủ để phục hồi nội dung toàn bộ câu hỏi. Kho mới tận dụng đáp án đã chấm còn lưu khi gặp lại câu đó. Với Canvas, mở trang kết quả bài cũ để gom các lượt còn có liên kết lịch sử; các câu không còn được trang học hiển thị thì không thể khôi phục. Chưa hỗ trợ thu thập Canvas New Quizzes trong iframe ngoài trang quiz hiện tại hoặc câu không dùng lựa chọn radio/checkbox.
+Menu hiện có Gemini 2.5 Flash, Gemini 3.7 Flash, Gemini 1.5 Flash và Gemini 2.0 Flash. Đây là danh sách trong mã nguồn, không phải cam kết mọi model còn được Google cung cấp hoặc có quota trong tài khoản của bạn. Nếu model báo không khả dụng, chọn model khác mà project hỗ trợ. Chi phí và hạn mức phụ thuộc dịch vụ Gemini API bạn sử dụng.
 
-## Cấu trúc và kiểm tra
+### Dùng Chrome AI
 
-- `shared-settings.js`: lựa chọn AI chung, chuyển cấu hình cũ và bật mặc định tự động.
-- `archive-content.js`, `question-bank.js`: thu thập, phân nhóm, lưu lịch sử bền vững và lọc câu trùng; không đổi thuật toán giải Canvas gốc.
-- `xlsx-export.js`, `bank-export.js`: xuất XLSX trực tiếp trên máy, không gửi kho câu hỏi tới dịch vụ ngoài; ô chứa nội dung luôn là văn bản, không thực thi công thức Excel.
-- `suite-popup.html`, `suite.js`, `suite.css`: popup tối giản.
-- `canvas-controls.js`: nút popup gọi chính các nút chế độ đang có trên trang Canvas.
-- `canvas-compat.js`: adapter lưu trữ và giao diện; `canvas/` giữ mã giải bài, cache và học kết quả của Canvas.
-- `content.js`, `core.js`, `playback.js`: logic SCORM giữ bản sửa Học lại/timeline hiện có.
-- `suite-background.js`: một worker cho cả hai phần. Không đăng ký `options_page`; URL trang cài đặt cũ chuyển về popup chung.
-- Mã Canvas gốc được giữ bên trong các lớp tích hợp; hash trong `extension/canvas/upstream-hashes.json` dùng để kiểm tra tính toàn vẹn.
+1. Chọn **Chrome AI · Gemini Nano trên máy**.
+2. Giữ popup mở trong lần chuẩn bị/tải đầu tiên, chờ thông báo sẵn sàng.
+3. Bấm nút chạy phù hợp với Canvas hoặc SCORM.
 
-Cài Node.js 22 trở lên, chạy `npm ci` rồi `npm test` tại thư mục repository. Kiểm thử bao gồm chuyển cấu hình cũ, chia sẻ model/key, nút Canvas/SCORM, hủy trong lúc chuẩn bị AI, lưu/xuất câu hỏi, đọc lịch sử cũ, lọc trùng khi đảo đáp án, cô lập học phần/bài tập, bảo vệ key và token. Bản 2.2.2 đã qua 21 kiểm thử liên quan kho câu hỏi và popup, gồm phản hồi xuất bị rỗng, tab cũ chưa kết nối, lựa chọn bị vô hiệu hóa nhưng đã chấm đủ điểm và loại bỏ lịch sử sai khỏi file xuất. XLSX xuất từ chính bộ xuất đã được mở lại bằng bộ đọc độc lập và so đủ 11 tiêu đề/hàng hướng dẫn với mẫu người dùng, xác nhận không có sheet lịch sử. Chưa kiểm tra xuất trên tài khoản học thật hoặc nhập trực tiếp vào Quizizz.
+Không cần API key và không có nút “Mở Chrome AI” riêng. Tiện ích tự chuẩn bị khi bạn chọn model hoặc bắt đầu chạy. Từ bản 2.2.3, phiên xử lý dùng **tài liệu nền ẩn**, không tạo tab AI trên thanh tab. Sau khi chuẩn bị xong, bạn có thể đóng popup; trạng thái vẫn được cập nhật khi mở lại popup.
 
-ZIP chỉ chứa `extension/` và README, không chứa dữ liệu HTML mẫu, token, key, node_modules hoặc bản lưu UI cũ.
+Nếu còn tab **Chrome AI chạy tự động** của bản cũ, hãy đóng tab đó sau khi tải lại tiện ích. Nếu không tạo được tài liệu nền, tiện ích báo lỗi để bạn xử lý; không tự mở một tab thay thế.
+
+Bản này kiểm tra `LanguageModel` và `Translator`. Luồng chuẩn bị chung có thể tải Gemini Nano cùng bộ dịch Việt–Anh; riêng SCORM dùng dịch để xử lý câu hỏi tiếng Việt. Nếu Chrome báo thiếu API hoặc phần cứng không hỗ trợ, xem [tài liệu Built-in AI của Chrome](https://developer.chrome.com/docs/ai/built-in), hoặc tự chọn Gemini API. Tiện ích không tự đổi sang API khi Chrome AI lỗi.
+
+## 3. Sử dụng
+
+Popup tự nhận diện trang đang mở và chọn thẻ **Canvas** hoặc **SCORM**. Bạn vẫn có thể đổi thẻ bằng tay. Nên bấm **Dừng** trước khi đổi AI rồi bắt đầu lại để dùng cấu hình mới.
+
+### Canvas
+
+Mở bài kiểm tra Canvas. Chọn chế độ trong popup hoặc bảng điều khiển nhỏ trên trang:
+
+| Nút | Hoạt động |
+| --- | --- |
+| **Tự động làm** | Giải các câu đọc được, chọn đáp án và chuyển câu khi có nút phù hợp. Khi hết câu, chế độ này không tự nộp toàn bộ bài; bạn kiểm tra và nộp trên Canvas. |
+| **Làm đến 10 điểm** | Giải câu hỏi, kiểm tra đã trả lời đủ, tự nộp bài, đọc kết quả rồi làm lại khi Canvas còn cho phép. Dừng khi điểm lần làm đạt từ 10 trở lên hoặc gặp điều kiện không thể tiếp tục. |
+| **Dừng** | Dừng vòng tự động và hủy yêu cầu AI đang xử lý nếu có. Thao tác đã gửi tới Canvas trước đó không được hoàn tác. |
+
+**“10 điểm” là số điểm thực tế Canvas hiển thị**, không tự quy đổi về thang 10 hay 100%. Bài có điểm tối đa dưới 10 không phù hợp với chế độ này; bài thang 20 vẫn có ngưỡng dừng là 10. Chế độ không bảo đảm sẽ đạt 10: AI có thể sai, bài có thể hết lượt, bị khóa hoặc thiếu kết quả từng câu để tiếp tục.
+
+Phần Canvas hiện xử lý giao diện **Classic Quizzes** có lựa chọn một đáp án (`radio`) hoặc nhiều đáp án (`checkbox`). Chưa hỗ trợ đầy đủ New Quizzes nằm trong iframe khác, câu tự luận, kéo thả hoặc câu chỉ có ảnh mà không đọc được nội dung chữ.
+
+### SCORM
+
+1. Mở bài học tại `scorm.eduone.io.vn` và bắt đầu phát nội dung.
+2. Mở popup, chọn **SCORM → Bắt đầu**.
+3. Theo dõi trạng thái trong popup; bấm **Dừng** khi muốn kết thúc thủ công.
+
+Khi đang chạy, tiện ích:
+
+- Đợi video/thanh thời gian kết thúc và nút **Tiếp theo** khả dụng rồi mới chuyển slide.
+- Xử lý câu trắc nghiệm khi đọc đủ câu hỏi và lựa chọn, sau đó chọn và gửi đáp án.
+- Bấm **Tiếp tục học** hoặc **Học lại/Thử lại** theo phản hồi nhận diện được. Với câu ôn tập, có thể mở lại mục câu hỏi khi mục đó đã được mở khóa.
+- Bật hỗ trợ chạy nền khi đổi tab. Cơ chế này không tua video và không bảo đảm hoạt động trên mọi cấu hình Chrome/trang học.
+- Tự dừng khi nhận diện slide hoàn thành bài học và thanh thời gian của slide đó kết thúc.
+
+Nếu không nhận diện được timeline, câu hỏi hoặc phản hồi, tiện ích có thể chờ hoặc dừng để bạn kiểm tra. Bản này được xây dựng theo giao diện Storyline/SCORM đã quan sát, không phải bộ điều khiển chung cho mọi hệ thống SCORM.
+
+## 4. Xuất câu hỏi Excel
+
+Nút **Xuất câu hỏi Excel** lấy kho đã lưu của **cả Canvas lẫn SCORM**, không phụ thuộc thẻ đang chọn trong popup.
+
+### Thu thập và tải file
+
+1. Với **Canvas**, mở trang bài tập hoặc trang kết quả. Trang kết quả giúp xác nhận đáp án đúng; tiện ích cũng đọc các liên kết lịch sử của chính bài đó còn được phép xem. Không cần bật chế độ tự làm chỉ để thu thập kết quả.
+2. Với **SCORM**, nội dung câu hỏi và phản hồi được lưu khi tiện ích đang chạy bằng nút **Bắt đầu**.
+3. Bấm **Xuất câu hỏi Excel** và giữ popup mở tới khi file tải xuống.
+4. Giải nén file `Cau-hoi-YYYY-MM-DD.zip`. Mỗi thư mục là một nhóm học phần/bài học, mỗi `.xlsx` thuộc một bài tập.
+
+Tên lấy từ trang khi đọc được; nếu thiếu tên, tiện ích dùng mã để phân biệt. Canvas phân nhóm theo học phần và quiz. SCORM phân nhóm theo URL bài học và mục/slide câu hỏi; các bài học ở URL khác nhau không tự được gộp thành một môn.
+
+### Chỉ xuất đáp án đã xác nhận đúng
+
+- Một câu được xuất khi có bằng chứng được chấm đúng và không có kết quả mâu thuẫn. Không xuất câu chỉ có dự đoán AI, câu chỉ làm sai hoặc chưa được chấm.
+- Nếu từng chọn sai A, B rồi được chấm đúng C, cột **Correct Answer** chỉ ghi lựa chọn C. Các phương án A/B/C/D gốc vẫn giữ để tạo câu trắc nghiệm.
+- Khi Canvas ẩn đáp án đúng nhưng lựa chọn đã chọn được chấm đủ điểm cho **riêng câu đó**, ví dụ `0,6/0,6`, vẫn có thể xác nhận lựa chọn đó. Không suy ra đáp án từ tổng điểm toàn bài.
+- Gộp câu trùng trong cùng bài tập theo nội dung và tập lựa chọn, kể cả đảo thứ tự đáp án. Các bộ lựa chọn khác nhau hoặc bài tập khác nhau vẫn được giữ riêng.
+- Lịch sử chọn sai và dự đoán AI chỉ lưu bên trong extension, không có sheet lịch sử trong file xuất. Nếu chưa có câu đạt điều kiện, tiện ích báo lý do và không tạo file.
+
+### Cấu trúc XLSX
+
+Sheet **Create a Quiz** giữ 11 cột và hàng hướng dẫn theo mẫu `QuizizzSampleSpreadsheetUpdated_v2.xlsx`. Câu hỏi bắt đầu ở hàng 3.
+
+| Cột | Nội dung |
+| --- | --- |
+| `Question Text` | Nội dung câu hỏi |
+| `Question Type` | `Multiple Choice` cho một đáp án; `Checkbox` cho nhiều đáp án |
+| `Option 1` … `Option 5` | Các lựa chọn gốc |
+| `Correct Answer` | Số thứ tự đáp án bắt đầu từ 1; ví dụ `3` hoặc `1,3` |
+| `Time in seconds` | Để trống trong bản hiện tại |
+| `Image Link` | Để trống trong bản hiện tại |
+| `Answer explanation` | Ghi nhận đã được bài chấm đúng, không phải lời giải chi tiết của AI |
+
+Câu có trên 5 lựa chọn được giữ đủ trong sheet **Câu trên 5 lựa chọn**. Sheet này là dữ liệu bổ sung, cần xử lý riêng trước khi nhập vào công cụ chỉ nhận 5 lựa chọn. Đã kiểm tra cấu trúc XLSX bằng bộ đọc độc lập; chưa xác nhận nhập trực tiếp vào Quizizz.
+
+**Giới hạn lịch sử cũ:** kho đầy đủ bắt đầu từ bản 2.2.0. Cache ở các bản trước không giữ đủ nội dung để khôi phục mọi câu hỏi. Muốn lấy lượt Canvas cũ, mở lại trang kết quả mà hệ thống còn cho xem. Tiện ích không tự quét toàn bộ tài khoản, không khôi phục được nội dung đã mất hoặc bị hệ thống ẩn hoàn toàn.
+
+## 5. Cập nhật và giữ dữ liệu
+
+1. Dừng các chế độ đang chạy.
+2. Tải mã nguồn mới và cập nhật vào **đúng thư mục đã dùng để cài tiện ích**. Nếu dùng Git, chạy `git pull` trong bản clone đó.
+3. Tại `chrome://extensions`, bấm biểu tượng **Tải lại** trên thẻ tiện ích.
+4. F5 các trang học đang mở, rồi mở popup và chạy lại.
+
+Cấu hình và kho câu hỏi nằm trong hồ sơ Chrome, không nằm trong thư mục mã nguồn. Tải lại cùng tiện ích giữ dữ liệu; gỡ tiện ích hoặc xóa dữ liệu hồ sơ có thể làm mất kho. Xuất Excel giúp giữ các câu đã xác nhận đúng, nhưng **không phải bản sao lưu toàn bộ lịch sử/cấu hình** và hiện chưa có chức năng nhập lại kho từ XLSX.
+
+## 6. Xử lý lỗi thường gặp
+
+| Hiện tượng | Cách xử lý |
+| --- | --- |
+| Không cài được, báo thiếu `manifest.json` | Giải nén ZIP và chọn thư mục `extension`, không chọn thư mục ngoài cùng. |
+| `Extension context invalidated` hoặc tab chưa kết nối kho câu hỏi | Tải lại tiện ích tại `chrome://extensions`, sau đó F5 trang học. |
+| Ô API key trống sau khi lưu | Xem dòng **Đã lưu key**. Tiện ích che key bằng cách làm trống ô hiển thị. |
+| Gemini báo lỗi key, model không khả dụng hoặc `429` | Kiểm tra key/quyền model và quota trong Google AI Studio; làm theo thông báo chờ hoặc đổi model phù hợp. |
+| Chrome AI không sẵn sàng hoặc tải chưa xong | Giữ popup mở trong lần chuẩn bị đầu. Nếu thiếu API/phần cứng hỗ trợ, dùng Gemini API. |
+| Chrome báo không hỗ trợ tài liệu AI chạy ẩn | Cập nhật Chrome và tải lại tiện ích để áp dụng quyền `offscreen`, sau đó F5 trang học. Nếu vẫn lỗi, xem thông báo trong popup hoặc chọn Gemini API. |
+| Đã làm bài nhưng chưa có câu để xuất | Mở trang kết quả. Mỗi câu cần bằng chứng chấm đúng; chỉ được AI chọn đáp án chưa đủ điều kiện. |
+| Tổng bài đạt 10 nhưng không xuất đủ số câu | Kiểm tra điểm và lựa chọn hiển thị ở từng câu. Câu thiếu dữ liệu, mâu thuẫn hoặc trùng sẽ không được xuất như câu độc lập mới. |
+| SCORM chờ mãi ở timeline hoặc nút tiếp tục | Kiểm tra video đang phát, nút đã mở khóa và câu hỏi đã hiện đủ; giao diện khác mẫu nhận diện có thể cần chỉnh mã nguồn. |
+| Canvas dừng trước khi đạt 10 | Đọc thông báo: có thể bài hết lượt, khóa, thiếu kết quả từng câu, AI lỗi hoặc điểm tối đa dưới 10. |
+
+## 7. Dữ liệu và quyền truy cập
+
+API key, cấu hình AI, cache và lịch sử được lưu bằng `chrome.storage.local`. Trạng thái phiên chạy dùng `chrome.storage.session`. Key được che trên giao diện nhưng tiện ích **không tự mã hóa key bằng mật khẩu riêng**.
+
+Khi dùng Gemini API, nội dung câu hỏi, các lựa chọn và ngữ cảnh phản hồi liên quan được gửi tới Google để giải. Chrome AI thực hiện suy luận qua mô hình trên máy; lần tải mô hình/bộ dịch cần mạng. Quá trình tạo XLSX diễn ra trong extension và không gửi kho câu hỏi tới dịch vụ xuất file bên ngoài.
+
+| Quyền trong manifest | Mục đích |
+| --- | --- |
+| `storage` | Lưu cấu hình, key, lịch sử và trạng thái |
+| `unlimitedStorage` | Cho phép kho câu hỏi vượt quota mặc định của `storage.local`; vẫn phụ thuộc dung lượng máy |
+| `activeTab`, `scripting` | Kết nối và chèn mã điều khiển/thu thập vào trang phù hợp |
+| `offscreen` | Duy trì tài liệu AI ẩn, không mở tab hoặc cửa sổ AI |
+| `https://*/*`, `http://*/*` | Hỗ trợ các tên miền Canvas, trang SCORM và gọi Gemini API |
+| `file://*/*` | Hỗ trợ mở mẫu HTML cục bộ khi bật quyền truy cập URL tệp trong Chrome |
+
+Quyền host khai báo rộng, nhưng các bộ thu thập/điều khiển có điều kiện nhận diện trang riêng. Bộ SCORM nhắm tới `scorm.eduone.io.vn`; bộ Canvas cần đường dẫn quiz và cấu trúc DOM phù hợp. API key, token đăng nhập, dữ liệu trang học cá nhân và các file xuất không được đưa vào repository.
+
+## 8. Dành cho người phát triển
+
+Tiện ích dùng **Manifest V3**, JavaScript/CSS thuần và một service worker chung. Mã trong `extension/` được nạp trực tiếp vào Chrome, không cần bước build.
+
+| Thành phần | Vai trò |
+| --- | --- |
+| `extension/suite-popup.html`, `suite.js`, `suite.css` | Giao diện và thao tác trong popup |
+| `extension/suite-background.js`, `shared-settings.js` | Điều phối worker và cấu hình AI dùng chung |
+| `extension/content.js`, `core.js`, `background.js`, `playback.js` | Nhận diện và xử lý bài học SCORM |
+| `extension/canvas/`, `canvas-compat.js`, `canvas-controls.js` | Mã Canvas và các lớp tích hợp |
+| `extension/builtin-engine.js`, `ai.html`, `ai-host.js` | Chuẩn bị Chrome AI và xử lý yêu cầu suy luận |
+| `extension/ai-offscreen.html`, `ai-offscreen.js` | Tài liệu ẩn chứa iframe AI cùng nguồn; điều khiển kết nối lại khi worker khởi động lại |
+| `extension/archive-content.js`, `question-bank.js` | Thu thập, lưu lâu dài, phân nhóm và đối chiếu đáp án |
+| `extension/bank-export.js`, `xlsx-export.js` | Lọc câu đã chấm đúng và tạo ZIP/XLSX |
+| `tests/` | Kiểm thử Node.js và DOM mô phỏng bằng jsdom |
+
+Luồng Chrome AI: popup chuẩn bị mô hình nếu cần → worker tạo hoặc dùng lại một tài liệu offscreen → iframe `ai.html` xử lý yêu cầu qua `chrome.runtime.Port`. Tài liệu offscreen dùng lý do `IFRAME_SCRIPTING` để chứa và điều khiển iframe AI, bao gồm khôi phục kết nối mà không tạo lại engine. Cả hai mô-đun dùng chung tài liệu này. Tab `ai.html` mở trực tiếp không khởi tạo engine để tránh tranh kết nối với phiên ẩn.
+
+Tham khảo [Offscreen API](https://developer.chrome.com/docs/extensions/reference/api/offscreen) về tài liệu ẩn và [Prompt API](https://developer.chrome.com/docs/ai/prompt-api) về hỗ trợ iframe cùng nguồn. Phần host chỉ dùng `chrome.runtime` để trao đổi với worker; các thao tác storage/tab nằm ở worker hoặc popup.
+
+### Chạy kiểm thử
+
+Dùng Node.js 22 trở lên, mở terminal tại thư mục repository:
+
+```sh
+npm ci
+npm test
+```
+
+Bản 2.2.3 đã đạt **145 kiểm thử**. Các kiểm thử sử dụng dữ liệu mô phỏng, không đăng nhập hay nộp bài trên tài khoản thật. Phạm vi gồm cấu hình AI, luồng Canvas/SCORM, tạo và kết nối lại tài liệu AI ẩn, hủy thao tác, lưu lịch sử, lọc trùng, bảo vệ dữ liệu và xuất file. Bộ kiểm thử không chạy mô hình Gemini Nano thực tế; khả năng suy luận trong tài liệu ẩn cần được kiểm tra thêm trên Chrome/phần cứng đang sử dụng. Đây không phải bảo đảm tương thích với mọi phiên bản giao diện của hệ thống học.
+
+### Đồng bộ mã Canvas gốc
+
+`scripts/build-canvas.cjs` chỉ dành cho người bảo trì có thư mục mã Canvas nguồn:
+
+```sh
+node scripts/build-canvas.cjs "/path/to/canvas-source"
+```
+
+Lệnh ghi lại các tệp tương ứng trong `extension/canvas/` và cập nhật hash tại `upstream-hashes.json`; không cần chạy khi cài đặt hoặc dùng tiện ích. Hash chuẩn hóa xuống dòng cho phép kiểm tra mã gốc trên các hệ điều hành khác nhau.

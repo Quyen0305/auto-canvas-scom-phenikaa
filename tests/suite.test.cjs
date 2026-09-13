@@ -14,7 +14,7 @@ async function waitFor(check){
 const root=path.resolve('extension');
 function setup() {
   const data={local:{apiKey:'scorm-key',config:{provider:'gemini'},'canvas:apiKey':'canvas-key','canvas:aiModel':'gemini-2.5-flash'},session:{}};
-  const listeners=[],connectListeners=[],sent=[],injected=[],opened=[];
+  const listeners=[],connectListeners=[],sent=[],injected=[],opened=[],offscreen=[],contexts=[];
   const store=area=>({
     async setAccessLevel(){},async get(value){
       const keys=value==null?Object.keys(data[area]):typeof value==='string'?[value]:Array.isArray(value)?value:Object.keys(value);
@@ -27,6 +27,8 @@ function setup() {
     scripting:{executeScript:async value=>{injected.push(value);return [];},insertCSS:async value=>{injected.push(value);}}};
   const context=vm.createContext({chrome,URL,DOMException,AbortController,setTimeout,clearTimeout,TextEncoder,crypto:webcrypto,console,
     fetch:async()=>{throw new Error('No network in integration tests');}});
+  chrome.runtime.getContexts=async()=>contexts;
+  chrome.offscreen={createDocument:async value=>{offscreen.push(value);contexts.push({documentUrl:chrome.runtime.getURL(value.url)});}};
   context.importScripts=(...files)=>files.forEach(file=>vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context,{filename:file}));
   context.importScripts('suite-background.js');
   function request(message,sender={url:'chrome-extension://suite/suite-popup.html'}) {
@@ -46,7 +48,7 @@ function setup() {
     const port={name:'lesson-builtin-ai',sender:{id:'suite',url:'chrome-extension://suite/ai.html'},postMessage:m=>out.push(m),disconnect:()=>disconnect.forEach(fn=>fn()),onMessage:{addListener:fn=>handlers.push(fn)},onDisconnect:{addListener:fn=>disconnect.push(fn)}};
     connectListeners.forEach(fn=>fn(port));return {out,receive:m=>handlers.forEach(fn=>fn(m))};
   }
-  return {context,chrome,data,request,host,opened,injected,sent};
+  return {context,chrome,data,request,host,opened,offscreen,injected,sent};
 }
 
 test('one real merged worker loads both modules and routes action/type to exactly one responder',async()=>{
@@ -126,10 +128,23 @@ test('Canvas functional source matches its original hashes, also on a fresh chec
   }
 });
 
+test('SCORM and Canvas native requests share one offscreen document without visible tabs',async()=>{
+  const h=setup();
+  await h.request({action:'SUITE_SETTINGS',data:{engine:'chrome_ai',model:'gemini-2.5-flash'}});
+  await h.request({type:'START',tabId:7});
+  const host=h.host();host.receive({type:'state',ready:true});await flush();
+  const jobPromise=vm.runInContext('requestCanvasAI("question", new AbortController().signal, {})',h.context);
+  const job=await waitFor(()=>host.out.find(m=>m.type==='canvas-solve'));
+  host.receive({type:'result',id:job.id,result:{answerable:true}});await jobPromise;
+  assert.equal(h.data.session['tab:7'].running,true);
+  assert.equal(h.offscreen.length,1);assert.equal(h.opened.length,0);
+});
+
 test('merged manifest has one worker/popup and SCORM is excluded from Canvas content injection',()=>{
   const manifest=JSON.parse(fs.readFileSync('extension/manifest.json','utf8'));
   assert.equal(manifest.background.service_worker,'suite-background.js');assert.equal(manifest.action.default_popup,'suite-popup.html');
   assert.equal(manifest.options_page,undefined);
+  assert.ok(manifest.permissions.includes('offscreen'));
   const canvas=manifest.content_scripts.find(item=>item.js.includes('canvas/content.js'));
   assert.ok(canvas.exclude_matches.includes('https://scorm.eduone.io.vn/*'));
   for(const item of manifest.content_scripts)for(const file of [...item.js,...item.css||[]])assert.ok(fs.existsSync(path.join(root,file)),file);

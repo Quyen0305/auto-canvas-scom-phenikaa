@@ -6,12 +6,16 @@ const {webcrypto} = require('node:crypto');
 const core = require('../extension/core.js');
 function setup(fetcher, clock = {}) {
   const data = {local: {apiKey:'test-key-never-real',config:{model:'gemini-2.5-flash'}},session:{'tab:7':{running:true,session:'s',config:core.defaults}}};
-  const levels = [], injections = [], opened = [], activated = [], tabList = []; let listener, onConnect;
+  const levels = [], injections = [], opened = [], activated = [], tabList = [], offscreen = [], contexts = [], reconnects = []; let listener, onConnect;
   const storage = name => ({async get(keys) { return keys == null ? {...data[name]} : Object.fromEntries((Array.isArray(keys)?keys:[keys]).map(k=>[k,data[name][k]])); },
     async set(values){Object.assign(data[name],values);}, async remove(keys){for(const k of Array.isArray(keys)?keys:[keys])delete data[name][k];},
     async setAccessLevel(value){levels.push([name,value.accessLevel]);}});
   const context = vm.createContext({LessonCore:core, importScripts(){}, fetch:fetcher, AbortController, crypto:webcrypto, setTimeout:clock.setTimeout || setTimeout, clearTimeout:clock.clearTimeout || clearTimeout, URL,
-    chrome:{storage:{local:storage('local'),session:storage('session')},runtime:{id:'test-extension',getURL:p=>'chrome-extension://test-extension/'+p,onConnect:{addListener(fn){onConnect=fn;}},onMessage:{addListener(fn){listener=fn;}}},
+    chrome:{storage:{local:storage('local'),session:storage('session')},runtime:{id:'test-extension',getURL:p=>'chrome-extension://test-extension/'+p,
+      async getContexts(filter){assert.deepEqual([...filter.contextTypes],['OFFSCREEN_DOCUMENT']);assert.equal(filter.documentUrls[0],'chrome-extension://test-extension/ai-offscreen.html');return contexts;},
+      async sendMessage(message){reconnects.push(message);return {ok:true};},
+      onConnect:{addListener(fn){onConnect=fn;}},onMessage:{addListener(fn){listener=fn;}}},
+      offscreen:{async createDocument(options){offscreen.push(options);contexts.push({documentUrl:'chrome-extension://test-extension/'+options.url});}},
       scripting:{async executeScript(options){injections.push(options); return [];}},
       windows:{async update(id,options){activated.push({windowId:id,...options});}},
       tabs:{async query(){return tabList;},async reload(){},async update(id,options){activated.push({tabId:id,...options});},async create(options){opened.push(options);tabList.push({id:900,windowId:2,...options});},async get(){return {url:'https://scorm.eduone.io.vn/en/learn/test'};},async sendMessage(){},onRemoved:{addListener(){}},onUpdated:{addListener(){}}}}});
@@ -25,14 +29,14 @@ function setup(fetcher, clock = {}) {
     onConnect(port);
     return {sent,receive:m=>onMessage?.(m),close:()=>port.disconnect()};
   }
-  return {data,levels,injections,opened,activated,tabList,connect,request:(message,sender={tab:{id:7},frameId:1})=>new Promise(resolve=>listener(message,sender,resolve))};
+  return {data,levels,injections,opened,activated,tabList,offscreen,contexts,reconnects,chrome:context.chrome,connect,request:(message,sender={tab:{id:7},frameId:1})=>new Promise(resolve=>listener(message,sender,resolve))};
 }
 
 test('local START automatically resumes on host readiness without key, second click, or cloud fallback',async()=>{
   let calls=0;const h=setup(()=>calls++);delete h.data.local.apiKey;h.data.local.config.provider='builtin';
   const waiting=await h.request({type:'START',tabId:7},{});
   assert.equal(waiting.needsPreparation,true);assert.equal(waiting.running,false);assert.equal(waiting.error,undefined);
-  assert.equal(h.opened.length,1);assert.equal(h.injections.length,0);
+  assert.equal(h.opened.length,0);assert.equal(h.offscreen.length,1);assert.equal(h.injections.length,0);
   const host=h.connect();host.receive({type:'state',ready:true});
   await new Promise(r=>setImmediate(r));const run=h.data.session['tab:7'];assert.equal(run.running,true);
   const pending=h.request({type:'SOLVE',session:run.session,question});
@@ -42,12 +46,12 @@ test('local START automatically resumes on host readiness without key, second cl
   const result=await pending;assert.deepEqual([...result.answers],[1]);assert.equal(calls,0);
 });
 
-test('repeated and concurrent preparation requests reuse one AI tab without starting lesson scripts',async()=>{
+test('repeated and concurrent preparation requests reuse one hidden AI document without opening tabs',async()=>{
   const h=setup(()=>{throw Error('cloud');});h.data.local.config.provider='builtin';
   await Promise.all([h.request({type:'START',tabId:7},{}),h.request({type:'START',tabId:7},{})]);
   await h.request({type:'START',tabId:7},{});
-  assert.equal(h.opened.length,1);assert.equal(h.injections.length,0);
-  assert.equal(h.activated.length,0);assert.equal(h.opened[0].active,false);
+  assert.equal(h.opened.length,0);assert.equal(h.offscreen.length,1);assert.equal(h.injections.length,0);
+  assert.equal(h.activated.length,0);assert.deepEqual([...h.offscreen[0].reasons],['IFRAME_SCRIPTING']);
   assert.equal(h.data.session['tab:7'].running,false);
 });
 
@@ -94,9 +98,33 @@ test('closing local host stops local runs while leaving cloud runs active',async
 test('lesson pages cannot impersonate the local host or open AI pages; options tabs can',async()=>{
   const h=setup(()=>{});h.connect('https://scorm.eduone.io.vn/ai.html').receive({type:'state',ready:true});
   assert.equal((await h.request({type:'BUILTIN_STATUS'},{})).ready,false);
-  await h.request({type:'OPEN_BUILTIN',session:'s'});assert.equal(h.opened.length,0);
+  await h.request({type:'OPEN_BUILTIN',session:'s'});assert.equal(h.offscreen.length,0);
   await h.request({type:'OPEN_BUILTIN'},{tab:{id:9},url:'chrome-extension://test-extension/options.html'});
-  assert.equal(h.opened.length,1);assert.equal(h.opened[0].url,'chrome-extension://test-extension/ai.html');
+  assert.equal(h.opened.length,0);assert.equal(h.offscreen.length,1);assert.equal(h.offscreen[0].url,'ai-offscreen.html');
+});
+
+test('worker reconnects to a surviving hidden document without recreating it',async()=>{
+  const h=setup(()=>{});h.contexts.push({documentUrl:'chrome-extension://test-extension/ai-offscreen.html'});
+  await h.request({type:'ENSURE_BUILTIN'},{});
+  assert.equal(h.offscreen.length,0);assert.equal(h.opened.length,0);
+  assert.equal(h.reconnects[0].target,'lesson-ai-offscreen');assert.equal(h.reconnects[0].command,'reconnect');
+});
+
+test('hidden document creation failure stops startup, never opens a tab and allows retry',async()=>{
+  const h=setup(()=>{throw Error('cloud');});h.data.local.config.provider='builtin';
+  const create=h.chrome.offscreen.createDocument;
+  h.chrome.offscreen.createDocument=async()=>{throw Error('Offscreen unavailable');};
+  assert.match((await h.request({type:'START',tabId:7},{})).error,/Offscreen unavailable/);
+  assert.equal(h.data.session['tab:7'].needsPreparation,false);assert.equal(h.injections.length,0);
+  h.chrome.offscreen.createDocument=create;
+  assert.equal((await h.request({type:'START',tabId:7},{})).needsPreparation,true);
+  assert.equal(h.offscreen.length,1);assert.equal(h.opened.length,0);
+});
+
+test('missing offscreen API reports an actionable error without a visible tab fallback',async()=>{
+  const h=setup(()=>{});delete h.chrome.offscreen;
+  assert.match((await h.request({type:'ENSURE_BUILTIN'},{})).error,/cập nhật Chrome/);
+  assert.equal(h.opened.length,0);
 });
 
 test('START installs MAIN playback bridge before content in all frames and migrates background default', async()=>{

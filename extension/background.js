@@ -16,12 +16,22 @@ function builtinStatus() {
 async function openBuiltin() {
   if (openingBuiltin) return openingBuiltin;
   openingBuiltin = (async () => {
-    const url = chrome.runtime.getURL('ai.html');
-    const tabs = await chrome.tabs.query({url});
-    const existing = tabs.find(t => t.id === builtinHost?.port.sender?.tab?.id) || tabs[0];
-    if (!existing) await chrome.tabs.create({url, active: false});
-    else if (builtinHost && !builtinHost.ready) builtinHost.port.postMessage({type: 'prepare'});
-    else if (!builtinHost && existing.status !== 'loading') await chrome.tabs.reload(existing.id);
+    if (!chrome.offscreen?.createDocument || !chrome.runtime.getContexts) {
+      throw new Error('Chrome chưa hỗ trợ tài liệu AI chạy ẩn. Hãy cập nhật Chrome và tải lại tiện ích.');
+    }
+    const contexts = await chrome.runtime.getContexts({
+      contextTypes: ['OFFSCREEN_DOCUMENT'], documentUrls: [chrome.runtime.getURL('ai-offscreen.html')]
+    });
+    if (!contexts.length) {
+      await chrome.offscreen.createDocument({
+        url: 'ai-offscreen.html', reasons: ['IFRAME_SCRIPTING'],
+        justification: 'Host and script the local AI iframe, restoring its runtime connection after service worker restarts without opening a browser tab.'
+      });
+    } else if (!builtinHost) {
+      // The hidden document may outlive its worker. Reconnect the existing engine.
+      await chrome.runtime.sendMessage({target: 'lesson-ai-offscreen', command: 'reconnect'});
+    }
+    if (builtinHost && !builtinHost.ready) builtinHost.port.postMessage({type: 'prepare'});
   })();
   try { await openingBuiltin; } finally { openingBuiltin = null; }
 }
@@ -52,7 +62,7 @@ chrome.runtime.onConnect.addListener(port => {
   port.onDisconnect.addListener(() => {
     if (builtinHost !== host) return;
     builtinHost = null;
-    for (const job of [...builtinJobs.values()]) if (job.host === host) job.finish(new Error('Tab Chrome AI đã ngắt kết nối.'));
+    for (const job of [...builtinJobs.values()]) if (job.host === host) job.finish(new Error('Phiên Chrome AI đã ngắt kết nối.'));
     stopBuiltinRuns().catch(() => {});
   });
 });
@@ -77,7 +87,7 @@ async function solveBuiltin(id, session, question, frameId) {
       controller.signal.addEventListener('abort', abort, {once: true});
       builtinJobs.set(requestId, {host, finish});
       try { host.port.postMessage({type: 'solve', id: requestId, question}); }
-      catch { finish(new Error('Không kết nối được tab Chrome AI.')); }
+      catch { finish(new Error('Không kết nối được phiên Chrome AI.')); }
     });
     const latest = await getRun(id);
     if (controller.signal.aborted || !latest?.running || latest.session !== session) throw new Error('Đã dừng.');
