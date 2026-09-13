@@ -6,7 +6,7 @@ const {webcrypto} = require('node:crypto');
 const core = require('../extension/core.js');
 function setup(fetcher, clock = {}) {
   const data = {local: {apiKey:'test-key-never-real',config:{model:'gemini-2.5-flash'}},session:{'tab:7':{running:true,session:'s',config:core.defaults}}};
-  const levels = [], injections = [], opened = [], activated = [], tabList = [], offscreen = [], contexts = [], reconnects = []; let listener, onConnect;
+  const levels = [], injections = [], opened = [], activated = [], tabList = [], offscreen = [], contexts = [], reconnects = [], events = [], sent = []; let listener, onConnect;
   const storage = name => ({async get(keys) { return keys == null ? {...data[name]} : Object.fromEntries((Array.isArray(keys)?keys:[keys]).map(k=>[k,data[name][k]])); },
     async set(values){Object.assign(data[name],values);}, async remove(keys){for(const k of Array.isArray(keys)?keys:[keys])delete data[name][k];},
     async setAccessLevel(value){levels.push([name,value.accessLevel]);}});
@@ -15,10 +15,10 @@ function setup(fetcher, clock = {}) {
       async getContexts(filter){assert.deepEqual([...filter.contextTypes],['OFFSCREEN_DOCUMENT']);assert.equal(filter.documentUrls[0],'chrome-extension://test-extension/ai-offscreen.html');return contexts;},
       async sendMessage(message){reconnects.push(message);return {ok:true};},
       onConnect:{addListener(fn){onConnect=fn;}},onMessage:{addListener(fn){listener=fn;}}},
-      offscreen:{async createDocument(options){offscreen.push(options);contexts.push({documentUrl:'chrome-extension://test-extension/'+options.url});}},
-      scripting:{async executeScript(options){injections.push(options); return [];}},
+      offscreen:{async createDocument(options){events.push('ai:create');offscreen.push(options);contexts.push({documentUrl:'chrome-extension://test-extension/'+options.url});}},
+      scripting:{async executeScript(options){events.push('inject:'+options.files.join(','));injections.push(options); return [];}},
       windows:{async update(id,options){activated.push({windowId:id,...options});}},
-      tabs:{async query(){return tabList;},async reload(){},async update(id,options){activated.push({tabId:id,...options});},async create(options){opened.push(options);tabList.push({id:900,windowId:2,...options});},async get(){return {url:'https://scorm.eduone.io.vn/en/learn/test'};},async sendMessage(){},onRemoved:{addListener(){}},onUpdated:{addListener(){}}}}});
+      tabs:{async query(){return tabList;},async reload(){},async update(id,options){activated.push({tabId:id,...options});},async create(options){opened.push(options);tabList.push({id:900,windowId:2,...options});},async get(){return {url:'https://scorm.eduone.io.vn/en/learn/test'};},async sendMessage(id,message){events.push('message:'+message.type);sent.push(message);},onRemoved:{addListener(){}},onUpdated:{addListener(){}}}}});
   vm.runInContext(fs.readFileSync('extension/background.js','utf8'),context);
   function connect(url='chrome-extension://test-extension/ai.html') {
     let onMessage, onDisconnect;
@@ -29,14 +29,17 @@ function setup(fetcher, clock = {}) {
     onConnect(port);
     return {sent,receive:m=>onMessage?.(m),close:()=>port.disconnect()};
   }
-  return {data,levels,injections,opened,activated,tabList,offscreen,contexts,reconnects,chrome:context.chrome,connect,request:(message,sender={tab:{id:7},frameId:1})=>new Promise(resolve=>listener(message,sender,resolve))};
+  return {data,levels,injections,opened,activated,tabList,offscreen,contexts,reconnects,events,sent,chrome:context.chrome,connect,request:(message,sender={tab:{id:7},frameId:1})=>new Promise(resolve=>listener(message,sender,resolve))};
 }
 
 test('local START automatically resumes on host readiness without key, second click, or cloud fallback',async()=>{
   let calls=0;const h=setup(()=>calls++);delete h.data.local.apiKey;h.data.local.config.provider='builtin';
   const waiting=await h.request({type:'START',tabId:7},{});
   assert.equal(waiting.needsPreparation,true);assert.equal(waiting.running,false);assert.equal(waiting.error,undefined);
-  assert.equal(h.opened.length,0);assert.equal(h.offscreen.length,1);assert.equal(h.injections.length,0);
+  assert.equal(h.opened.length,0);assert.equal(h.offscreen.length,1);assert.equal(h.injections.length,2);
+  assert.equal(waiting.playbackOnly,true);
+  assert.ok(h.events.indexOf('message:PREPARE_PLAYBACK')<h.events.indexOf('ai:create'));
+  assert.equal(h.sent.some(m=>m.type==='START'),false);
   const host=h.connect();host.receive({type:'state',ready:true});
   await new Promise(r=>setImmediate(r));const run=h.data.session['tab:7'];assert.equal(run.running,true);
   const pending=h.request({type:'SOLVE',session:run.session,question});
@@ -50,7 +53,7 @@ test('repeated and concurrent preparation requests reuse one hidden AI document 
   const h=setup(()=>{throw Error('cloud');});h.data.local.config.provider='builtin';
   await Promise.all([h.request({type:'START',tabId:7},{}),h.request({type:'START',tabId:7},{})]);
   await h.request({type:'START',tabId:7},{});
-  assert.equal(h.opened.length,0);assert.equal(h.offscreen.length,1);assert.equal(h.injections.length,0);
+  assert.equal(h.opened.length,0);assert.equal(h.offscreen.length,1);assert.equal(h.sent.some(m=>m.type==='START'),false);
   assert.equal(h.activated.length,0);assert.deepEqual([...h.offscreen[0].reasons],['IFRAME_SCRIPTING']);
   assert.equal(h.data.session['tab:7'].running,false);
 });
@@ -115,7 +118,8 @@ test('hidden document creation failure stops startup, never opens a tab and allo
   const create=h.chrome.offscreen.createDocument;
   h.chrome.offscreen.createDocument=async()=>{throw Error('Offscreen unavailable');};
   assert.match((await h.request({type:'START',tabId:7},{})).error,/Offscreen unavailable/);
-  assert.equal(h.data.session['tab:7'].needsPreparation,false);assert.equal(h.injections.length,0);
+  assert.equal(h.data.session['tab:7'].needsPreparation,false);assert.equal(h.data.session['tab:7'].playbackOnly,false);
+  assert.equal(h.sent.at(-1).type,'STOP');assert.equal(h.injections.length,2);
   h.chrome.offscreen.createDocument=create;
   assert.equal((await h.request({type:'START',tabId:7},{})).needsPreparation,true);
   assert.equal(h.offscreen.length,1);assert.equal(h.opened.length,0);
@@ -125,6 +129,34 @@ test('missing offscreen API reports an actionable error without a visible tab fa
   const h=setup(()=>{});delete h.chrome.offscreen;
   assert.match((await h.request({type:'ENSURE_BUILTIN'},{})).error,/cập nhật Chrome/);
   assert.equal(h.opened.length,0);
+});
+
+test('Stop during playback injection prevents late activation and AI setup',async()=>{
+  const h=setup(()=>{throw Error('cloud');});h.data.local.config.provider='builtin';let release;
+  h.chrome.scripting.executeScript=()=>new Promise(resolve=>release=resolve);
+  const start=h.request({type:'START',tabId:7},{});
+  await new Promise(r=>setImmediate(r));assert.ok(release);
+  await h.request({type:'STOP',tabId:7},{});release([]);await start;
+  assert.equal(h.data.session['tab:7'].playbackOnly,false);assert.equal(h.offscreen.length,0);
+  assert.equal(h.sent.some(m=>['PREPARE_PLAYBACK','START'].includes(m.type)),false);
+});
+
+test('playback preparation accepts status and HELLO but never authorizes question solving',async()=>{
+  let calls=0;const h=setup(()=>calls++);h.data.local.config.provider='builtin';
+  const run=await h.request({type:'START',tabId:7},{});
+  assert.equal((await h.request({type:'HELLO'})).playbackOnly,true);
+  const answer=await h.request({type:'SOLVE',session:run.session,question});
+  assert.match(answer.error,/dừng/);assert.equal(calls,0);
+  await h.request({type:'STATUS',session:run.session,text:'Preparing',playback:{active:true,clock:'worker'}});
+  assert.equal(h.data.session['status:7:1'].playback.active,true);
+});
+
+test('invalid cloud configuration turns off the playback preparation it already enabled',async()=>{
+  const h=setup(()=>{throw Error('cloud');});delete h.data.local.apiKey;
+  const result=await h.request({type:'START',tabId:7},{});
+  assert.match(result.error,/API key/);assert.ok(h.sent.some(m=>m.type==='PREPARE_PLAYBACK'));
+  assert.equal(h.sent.at(-1).type,'STOP');assert.equal(h.data.session['tab:7'].playbackOnly,false);
+  assert.equal(h.sent.some(m=>m.type==='START'),false);
 });
 
 test('START installs MAIN playback bridge before content in all frames and migrates background default', async()=>{
@@ -144,14 +176,15 @@ test('STOP during model preparation cancels automatic startup even when the host
   const host=h.connect();host.receive({type:'state',ready:true,phase:'ready'});
   await new Promise(r=>setImmediate(r));
   assert.equal(h.data.session['tab:7'].needsPreparation,false);
-  assert.equal(h.data.session['tab:7'].running,false);assert.equal(h.injections.length,0);
+  assert.equal(h.data.session['tab:7'].running,false);assert.equal(h.data.session['tab:7'].playbackOnly,false);
+  assert.equal(h.sent.some(m=>m.type==='START'),false);
 });
 
 test('model activation error stays visible and a completed settings download resumes the pending lesson once',async()=>{
   const h=setup(()=>{throw Error('cloud');});h.data.local.config.provider='builtin';
   await h.request({type:'START',tabId:7},{});
   const host=h.connect();host.receive({type:'state',ready:false,phase:'error',detail:'Chrome cần thao tác tải lần đầu.'});
-  assert.equal(h.injections.length,0);
+  assert.equal(h.injections.length,2);assert.equal(h.data.session['tab:7'].playbackOnly,true);
   await h.request({type:'ENSURE_BUILTIN'},{});
   assert.ok(host.sent.some(m=>m.type==='prepare'));
   host.receive({type:'state',ready:true,phase:'ready'});

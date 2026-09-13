@@ -1,6 +1,6 @@
 # Auto Canvas SCOM Phenikaa
 
-Tiện ích Chrome hỗ trợ làm bài trắc nghiệm trên Canvas, xem video bài giảng và làm bài tập theo dõi bài học SCORM và xuất câu hỏi đã có đáp án đúng ra Excel. Phiên bản hiện tại: **2.2.4**.
+Tiện ích Chrome hỗ trợ làm bài trắc nghiệm trên Canvas, xem video bài giảng và làm bài tập theo dõi bài học SCORM và xuất câu hỏi đã có đáp án đúng ra Excel. Phiên bản hiện tại: **2.2.5**.
 
 Tên repository giữ chữ `scom`; tên kỹ thuật của định dạng bài học là **SCORM**. Khi cài vào Chrome, tiện ích hiển thị tên **Trợ lý học tập · Canvas & SCORM**.
 
@@ -89,6 +89,8 @@ Phần Canvas hiện xử lý giao diện **Classic Quizzes** có lựa chọn m
 1. Mở bài học tại `scorm.eduone.io.vn` và bắt đầu phát nội dung.
 2. Mở popup, chọn **SCORM → Bắt đầu**.
 3. Theo dõi trạng thái trong popup; bấm **Dừng** khi muốn kết thúc thủ công.
+
+Từ bản 2.2.5, thứ tự khi bấm **Bắt đầu** là: **bật hỗ trợ chạy nền → kiểm tra/chuẩn bị AI → xử lý câu hỏi và chuyển slide**. Video đang phát được hỗ trợ chạy nền ngay trong lúc chờ AI. Giai đoạn này chưa tự chọn đáp án hay chuyển slide. Bấm **Dừng** sẽ tắt cả hỗ trợ chạy nền và yêu cầu bắt đầu đang chờ; AI sẵn sàng sau đó cũng không tự bật lại bài học. Việc chọn model để tải trước trong popup vẫn dùng được độc lập.
 
 Khi đang chạy, tiện ích:
 
@@ -212,7 +214,7 @@ npm ci
 npm test
 ```
 
-Bản 2.2.4 đã đạt **149 kiểm thử**. Các kiểm thử sử dụng dữ liệu mô phỏng, không đăng nhập hay nộp bài trên tài khoản thật. Phạm vi gồm cấu hình AI, luồng Canvas/SCORM, khởi động trong tab ẩn và khôi phục sau khi bộ định nhịp bị trễ, tạo và kết nối lại tài liệu AI ẩn, hủy thao tác, lưu lịch sử, lọc trùng, bảo vệ dữ liệu và xuất file. Bộ kiểm thử không chạy mô hình Gemini Nano thực tế; khả năng suy luận trong tài liệu ẩn cần được kiểm tra thêm trên Chrome/phần cứng đang sử dụng. Đây không phải bảo đảm tương thích với mọi phiên bản giao diện của hệ thống học.
+Bản 2.2.5 đã đạt **156 kiểm thử**. Các kiểm thử sử dụng dữ liệu mô phỏng, không đăng nhập hay nộp bài trên tài khoản thật. Phạm vi gồm cấu hình AI, luồng Canvas/SCORM, bật chạy nền trước khi chuẩn bị AI, khởi động trong tab ẩn và khôi phục sau khi bộ định nhịp bị trễ, tạo và kết nối lại tài liệu AI ẩn, hủy thao tác, lưu lịch sử, lọc trùng, bảo vệ dữ liệu và xuất file. Bộ kiểm thử không chạy mô hình Gemini Nano thực tế; khả năng suy luận trong tài liệu ẩn cần được kiểm tra thêm trên Chrome/phần cứng đang sử dụng. Đây không phải bảo đảm tương thích với mọi phiên bản giao diện của hệ thống học.
 
 ### Đồng bộ mã Canvas gốc
 

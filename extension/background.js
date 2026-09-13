@@ -101,30 +101,60 @@ async function broadcast(id, message) { try { await chrome.tabs.sendMessage(id, 
 async function stop(id, text = 'Đã dừng.') {
   starting.delete(id);
   const run = await getRun(id);
-  if (run) await chrome.storage.session.set({[tabKey(id)]: {...run, running: false, needsPreparation: false, message: text}});
+  if (run) await chrome.storage.session.set({[tabKey(id)]: {...run, running: false, playbackOnly: false, needsPreparation: false, message: text}});
   for (const [key, controller] of pending) if (key.startsWith(`${id}:`)) controller.abort();
   await broadcast(id, {type: 'STOP', message: text});
+}
+async function preparePlayback(id) {
+  // Claim this startup before waiting: Stop during injection must cancel it.
+  const stopped = stop(id), token = crypto.randomUUID();
+  starting.set(id, token);
+  const current = () => starting.get(id) === token;
+  try {
+    await stopped;
+    if (!current()) return null;
+    const {config = {}, apiKey} = await chrome.storage.local.get(['config', 'apiKey']);
+    const tab = await chrome.tabs.get(id);
+    if (!current()) return null;
+    if (!tab.url || new URL(tab.url).origin !== 'https://scorm.eduone.io.vn') throw new Error('Hãy mở tab SCORM tại scorm.eduone.io.vn rồi bấm Bắt đầu.');
+    const run = {running: false, playbackOnly: true, needsPreparation: config.provider === 'builtin', session: token, origin: new URL(tab.url).origin,
+      config: {...LessonCore.defaults, ...config, selectors: {...LessonCore.defaults.selectors, ...config.selectors}},
+      message: 'Đã bật chạy nền. Đang chuẩn bị AI; câu hỏi sẽ được xử lý khi AI sẵn sàng.'};
+    await chrome.storage.session.set({[tabKey(id)]: run});
+    if (!current()) return null;
+    await chrome.scripting.executeScript({target: {tabId: id, allFrames: true}, world: 'MAIN', files: ['playback.js']});
+    if (!current()) return null;
+    await chrome.scripting.executeScript({target: {tabId: id, allFrames: true}, files: ['core.js', 'archive-content.js', 'content.js']});
+    if (!current()) return null;
+    await chrome.tabs.sendMessage(id, {type: 'PREPARE_PLAYBACK', run});
+    return current() ? {run, apiKey} : null;
+  } catch (error) {
+    if (!current()) return null;
+    await stop(id, error.message); throw error;
+  } finally { if (current()) starting.delete(id); }
 }
 async function launch(id, run) {
   const token = run.session;
   starting.set(id, token);
   const current = async () => {
     const latest = await getRun(id);
-    return starting.get(id) === token && latest?.session === token &&
+    return starting.get(id) === token && latest?.session === token && (latest.running || latest.playbackOnly || latest.needsPreparation) &&
       (run.config.provider !== 'builtin' || builtinHost?.ready === true);
   };
   try {
     const tab = await chrome.tabs.get(id);
     if (!tab.url || new URL(tab.url).origin !== run.origin) throw new Error('Đã rời trang bài học.');
     if (!await current()) return getRun(id);
-    await chrome.scripting.executeScript({target: {tabId: id, allFrames: true}, world: 'MAIN', files: ['playback.js']});
-    if (!await current()) return getRun(id);
-    await chrome.scripting.executeScript({target: {tabId: id, allFrames: true}, files: ['core.js', 'archive-content.js', 'content.js']});
-    if (!await current()) return getRun(id);
+    if (!run.playbackOnly) {
+      await chrome.scripting.executeScript({target: {tabId: id, allFrames: true}, world: 'MAIN', files: ['playback.js']});
+      if (!await current()) return getRun(id);
+      await chrome.scripting.executeScript({target: {tabId: id, allFrames: true}, files: ['core.js', 'archive-content.js', 'content.js']});
+      if (!await current()) return getRun(id);
+    }
     const stored = await chrome.storage.session.get(null);
     await chrome.storage.session.remove(Object.keys(stored).filter(x => x.startsWith(`status:${id}:`)));
     if (!await current()) return getRun(id);
-    const active = {...run, running: true, needsPreparation: false, message: 'Đang tìm slide trong các khung bài học…'};
+    const active = {...run, running: true, playbackOnly: false, needsPreparation: false, message: 'Đang tìm slide trong các khung bài học…'};
     await chrome.storage.session.set({[tabKey(id)]: active});
     if (starting.get(id) !== token) { await stop(id); return getRun(id); }
     await broadcast(id, {type: 'START', run: active});
@@ -196,7 +226,7 @@ async function handle(message, sender) {
   if (fromPage) {
     const run = await getRun(id);
     if (message.type === 'HELLO') return run || {running: false};
-    if (!run?.running || run.session !== message.session) return {running: false};
+    if (!(run?.running || run?.playbackOnly) || run.session !== message.session) return {running: false};
     if (message.type === 'SOLVE') return solve(id, message.session, message.question, sender.frameId);
     if (message.type === 'STATUS') {
       const key = `status:${id}:${sender.frameId}`;
@@ -210,23 +240,24 @@ async function handle(message, sender) {
     return {};
   }
   if (message.type === 'START') {
-    await stop(id);
-    const {config = {}, apiKey} = await chrome.storage.local.get(['config', 'apiKey']);
-    const tab = await chrome.tabs.get(id);
-    if (!tab.url || new URL(tab.url).origin !== 'https://scorm.eduone.io.vn') throw new Error('Hãy mở tab SCORM tại scorm.eduone.io.vn rồi bấm Bắt đầu.');
-    if (config.provider && !['gemini', 'builtin'].includes(config.provider)) throw new Error('Nguồn AI không hợp lệ.');
-    if (config.provider !== 'builtin' && !apiKey) throw new Error('Nhập Gemini API key trong popup trước.');
-    const run = {running: false, needsPreparation: config.provider === 'builtin', session: crypto.randomUUID(), origin: new URL(tab.url).origin,
-      config: {...LessonCore.defaults, ...config, selectors: {...LessonCore.defaults.selectors, ...config.selectors}},
-      message: 'Đang tự chuẩn bị Chrome AI. Bài học sẽ tự chạy khi AI sẵn sàng.'};
-    await chrome.storage.session.set({[tabKey(id)]: run});
-    if (run.needsPreparation && !builtinHost?.ready) {
-      try { await openBuiltin(); }
-      catch (error) { await stop(id, error.message); throw error; }
-      if (builtinHost?.ready) await resumeBuiltinStarts();
-      return getRun(id);
+    const prepared = await preparePlayback(id);
+    if (!prepared) return getRun(id);
+    const {run, apiKey} = prepared, config = run.config;
+    try {
+      const latest = await getRun(id);
+      if (latest?.session !== run.session || !latest.playbackOnly) return latest;
+      if (!['gemini', 'builtin'].includes(config.provider)) throw new Error('Nguồn AI không hợp lệ.');
+      if (config.provider !== 'builtin' && !apiKey) throw new Error('Nhập Gemini API key trong popup trước.');
+      if (run.needsPreparation && !builtinHost?.ready) {
+        await openBuiltin();
+        if (builtinHost?.ready) await resumeBuiltinStarts();
+        return getRun(id);
+      }
+      return await launch(id, run);
+    } catch (error) {
+      if ((await getRun(id))?.session === run.session) await stop(id, error.message);
+      throw error;
     }
-    return launch(id, run);
   }
   if (message.type === 'STOP') { await stop(id); return {ok: true}; }
   if (message.type === 'BUILTIN_STATUS') return builtinStatus();
@@ -263,5 +294,5 @@ chrome.tabs.onRemoved.addListener(async id => {
 chrome.tabs.onUpdated.addListener(async (id, change) => {
   if (!change.url) return;
   const run = await getRun(id);
-  if ((run?.running || run?.needsPreparation) && new URL(change.url).origin !== run.origin) await stop(id, 'Đã rời trang bài học.');
+  if ((run?.running || run?.playbackOnly || run?.needsPreparation) && new URL(change.url).origin !== run.origin) await stop(id, 'Đã rời trang bài học.');
 });

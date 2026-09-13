@@ -129,7 +129,7 @@ test('reinjection is idempotent and pagehide stops background mode', () => {
   h.w.dispatchEvent(new h.w.Event('pagehide')); assert.equal(h.status.active, false); h.close();
 });
 
-async function attachContent(h, backgroundPlayback = true) {
+async function attachContent(h, backgroundPlayback = true, playbackOnly = false) {
   let listener;
   const w = h.w;
   w.document.body.innerHTML = '<style>*{opacity:1}</style><div class="slide">Video</div><progress max="100" value="20"></progress>';
@@ -141,7 +141,7 @@ async function attachContent(h, backgroundPlayback = true) {
   w.eval(fs.readFileSync('extension/content.js', 'utf8'));
   await Promise.resolve();
   const send = message => listener(message, {}, () => {});
-  send({type: 'START', run: {session: 'test', config: {...w.LessonCore.defaults, backgroundPlayback}}});
+  send({type: playbackOnly ? 'PREPARE_PLAYBACK' : 'START', run: {session: 'test', config: {...w.LessonCore.defaults, backgroundPlayback}}});
   await Promise.resolve();
   return send;
 }
@@ -155,6 +155,25 @@ test('content/main bridge starts only for enabled config and STOP releases it', 
   assert.equal(h.status.active, true);
   assert.equal(h.w.__lessonAssistant.diagnose().backgroundPlayback.clock, 'worker');
   send({type: 'STOP'}); assert.equal(h.status.active, false); h.close();
+});
+
+test('playback-only preparation keeps hidden timeline ticking without navigating before AI',async()=>{
+  const h=setup();const send=await attachContent(h,true,true);h.hide();let clicks=0,frames=0;
+  const next=h.w.document.createElement('button');next.textContent='Tiếp theo';next.onclick=()=>clicks++;
+  h.w.document.body.append(next);h.w.document.querySelector('progress').value=100;
+  for(let i=0;i<5;i++){h.w.requestAnimationFrame(()=>frames++);h.advance(1000);await Promise.resolve();}
+  assert.equal(h.status.active,true);assert.equal(frames,5);assert.equal(clicks,0);
+  const worker=h.worker;
+  send({type:'START',run:{session:'test',config:h.w.LessonCore.defaults}});
+  assert.equal(h.worker,worker);assert.notEqual(worker.terminated,true);
+  h.advance(2000);await Promise.resolve();h.advance(2000);await Promise.resolve();
+  assert.equal(clicks,1);send({type:'STOP'});assert.equal(h.status.active,false);h.close();
+});
+
+test('Stop during playback-only AI preparation immediately restores normal visibility',async()=>{
+  const h=setup();const send=await attachContent(h,true,true);h.hide();assert.equal(h.w.document.hidden,false);
+  send({type:'STOP'});assert.equal(h.status.active,false);assert.equal(h.w.document.hidden,true);
+  h.advance(60000);await Promise.resolve();assert.equal(h.status.active,false);h.close();
 });
 
 test('extension reload invalidation stops the main-world clock on the next pulse', async () => {

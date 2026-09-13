@@ -49,6 +49,24 @@ test('SCORM Start and Stop remain available with the shared model selector',asyn
   assert.ok(h.messages.some(m=>m.type==='START'));assert.ok(h.messages.some(m=>m.type==='STOP'));h.close();
 });
 
+test('SCORM popup waits for playback setup before starting native AI preparation',async()=>{
+  const h=await setup({engine:'chrome_ai'});let release;
+  const original=h.w.chrome.runtime.sendMessage;
+  h.w.chrome.runtime.sendMessage=m=>m.type==='START'?new Promise(resolve=>release=resolve):original(m);
+  h.el('start').click();await flush();assert.ok(release);assert.equal(h.preparations,0);
+  release({playbackOnly:true,needsPreparation:true});await flush();await flush();
+  assert.equal(h.preparations,1);h.close();
+});
+
+test('Stop before SCORM playback setup completes prevents a late popup AI download',async()=>{
+  const h=await setup({engine:'chrome_ai'});let release;
+  const original=h.w.chrome.runtime.sendMessage;
+  h.w.chrome.runtime.sendMessage=m=>m.type==='START'?new Promise(resolve=>release=resolve):original(m);
+  h.el('start').click();await flush();h.el('stop').click();await flush();
+  release({playbackOnly:true,needsPreparation:true});await flush();
+  assert.equal(h.preparations,0);assert.ok(h.messages.some(m=>m.type==='STOP'));h.close();
+});
+
 test('one export button flushes open Canvas pages and downloads the grouped archive without starting a solver',async()=>{
   const h=await setup({canvas:true}),injected=[],downloads=[];
   h.w.chrome.scripting={executeScript:async args=>injected.push(args)};

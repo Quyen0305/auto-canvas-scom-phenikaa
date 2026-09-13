@@ -31,7 +31,8 @@
     const engine=new LessonBuiltin.Engine(),task={engine};preparing=task;
     const progress=text=>{if(preparing===task)$('aiStatus').textContent=text;};
     progress('Đang chuẩn bị Chrome AI. Lần đầu hãy giữ popup mở đến khi tải xong.');
-    // All native create calls begin inside the model-change or Start gesture.
+    // Downloads stay in the popup's user-activated document. SCORM first waits
+    // for its playback setup; selecting a model can also prepare it directly.
     task.promise=engine.prepare(progress).then(async()=>{
       if(preparing!==task)return;
       engine.destroy();
@@ -75,19 +76,21 @@
       if(result.builtin?.ready)modelReady=true;
       const run=result.run;
       const frame=result.frames?.find(item=>!item.text.startsWith('Chưa thấy slide'));
-      notice(run?.needsPreparation?(result.builtin?.phase==='error'?result.builtin.detail:'Đang chuẩn bị AI. Bài học sẽ tự bắt đầu khi sẵn sàng.'):run?.running?(frame?.text || run.message):(run?.message || 'Sẵn sàng. Bấm Bắt đầu để chạy bài học.'));
+      notice(run?.needsPreparation?(result.builtin?.phase==='error'?result.builtin.detail:'Đã bật chạy nền. Đang chuẩn bị AI để xử lý câu hỏi…'):run?.running?(frame?.text || run.message):(run?.message || 'Sẵn sàng. Bấm Bắt đầu để chạy bài học.'));
     }catch(error){notice(error.message);}
   }
   async function start(command){
     if(!loaded||working)return;
     const token=++epoch;working=true;lock();errorUntil=0;
     const local=$('aiModel').value==='chrome_ai';
-    const preparation=local?prepareAI():Promise.resolve();
+    // SCORM enables playback in the worker before either native AI host starts.
+    const preparation=local && command!=='START'?prepareAI():Promise.resolve();
     try{
       await save();if(token!==epoch)return;
       if(command==='START'){
         const response=await chrome.runtime.sendMessage({type:'START',tabId});
         if(response?.error)throw Error(response.error);
+        if(local && token===epoch && !closed && (response?.needsPreparation || response?.running)) prepareAI();
         notice(response?.message || 'Đang bắt đầu…');
       }else{
         await preparation;if(token!==epoch)return;

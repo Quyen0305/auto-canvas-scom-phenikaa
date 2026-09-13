@@ -1,7 +1,7 @@
 (() => {
   if (globalThis.__lessonAssistant) return;
   const C = globalThis.LessonCore;
-  const S = {running: false, session: '', config: C.defaults, timer: null, busy: false, generation: 0,
+  const S = {running: false, playbackOnly: false, session: '', config: C.defaults, timer: null, busy: false, generation: 0,
     key: '', stable: '', stableAt: 0, endAt: 0, action: null, quiz: null, reviewReturn: null, histories: new Map(), lastStatus: ''};
   let playbackState = {active: false, clock: 'unavailable'};
   let lastPlaybackStatus = '';
@@ -216,10 +216,10 @@
     stopLocal();
     sendMessage({type: 'PAUSE', session, text: reason}).catch(() => {});
   }
-  function stopLocal() {
-    S.running = false; S.generation++; clearInterval(S.timer); S.timer = null;
+  function stopLocal(keepPlayback = false) {
+    S.running = false; S.playbackOnly = false; S.generation++; clearInterval(S.timer); S.timer = null;
     S.reviewReturn = null;
-    playback(false);
+    if (!keepPlayback) playback(false);
   }
   function resetSlide(key) {
     S.key = key; S.stable = ''; S.stableAt = Date.now(); S.endAt = 0; S.action = null;
@@ -239,6 +239,7 @@
     if (!S.running || S.busy) return;
     if (!contextAlive()) { stopLocal(); return; }
     playback(S.config.backgroundPlayback !== false);
+    if (S.playbackOnly) { setStatus('Đã bật chạy nền. Đang chờ AI sẵn sàng…'); return; }
     S.busy = true;
     const generation = S.generation;
     try {
@@ -432,9 +433,9 @@
       if (S.running && generation === S.generation) halt(error.message);
     } finally { S.busy = false; }
   }
-  function start(run) {
-    stopLocal();
-    S.session = run.session; S.config = run.config; S.running = true; S.lastStatus = ''; S.root = null; S.quiz = null; S.histories.clear();
+  function start(run, playbackOnly = false) {
+    stopLocal(S.running && S.playbackOnly && S.session === run.session);
+    S.session = run.session; S.config = run.config; S.running = true; S.playbackOnly = playbackOnly; S.lastStatus = ''; S.root = null; S.quiz = null; S.histories.clear();
     playback(S.config.backgroundPlayback !== false);
     resetSlide(''); S.timer = setInterval(tick, 350); tick();
   }
@@ -453,6 +454,7 @@
       question: snap.q ? {text: snap.q.text, options: snap.q.options, error: snap.q.error} : null};
   }
   chrome.runtime.onMessage.addListener((message, sender, reply) => {
+    if (message.type === 'PREPARE_PLAYBACK') start(message.run, true);
     if (message.type === 'START') start(message.run);
     if (message.type === 'STOP') stopLocal();
     if (message.type === 'DIAGNOSE') {
@@ -460,5 +462,8 @@
     } else reply({ok: true});
   });
   globalThis.__lessonAssistant = {snapshot, diagnose, tick};
-  sendMessage({type: 'HELLO'}).then(run => { if (run?.running && contextAlive()) start(run); }).catch(() => {});
+  const helloGeneration = S.generation;
+  sendMessage({type: 'HELLO'}).then(run => {
+    if (S.generation === helloGeneration && (run?.running || run?.playbackOnly) && contextAlive()) start(run, !run.running);
+  }).catch(() => {});
 })();
