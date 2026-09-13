@@ -35,8 +35,8 @@ test('visibility mask only applies during a run, suppresses window blur but pres
   h.hide(); assert.equal(h.w.document.hidden, true); assert.equal(visibility, 1);
   h.control('on'); h.hide(); h.w.dispatchEvent(new h.w.Event('blur')); input.dispatchEvent(new h.w.Event('blur'));
   assert.equal(h.w.document.hidden, false); assert.equal(h.w.document.visibilityState, 'visible');
-  assert.equal(h.w.document.hasFocus(), true); assert.equal(visibility, 1); assert.equal(blur, 0); assert.equal(fieldBlur, 1);
-  h.control('off'); assert.equal(h.w.document.hidden, true); assert.equal(visibility, 2); assert.equal(blur, 1);
+  assert.equal(h.w.document.hasFocus(), true); assert.equal(visibility, 2); assert.equal(blur, 0); assert.equal(fieldBlur, 1);
+  h.control('off'); assert.equal(h.w.document.hidden, true); assert.equal(visibility, 3); assert.equal(blur, 1);
   assert.equal(h.worker.terminated, true); h.close();
 });
 
@@ -87,6 +87,35 @@ test('live content pulses renew lease, but STOP immediately terminates clock', (
   assert.equal(h.status.active, true); h.control('off'); assert.equal(h.worker.terminated, true); h.close();
 });
 
+test('starting after the tab was hidden releases an existing player visibility pause once', () => {
+  const h=setup();let playing=true,pausedByVisibility=false,restores=0;
+  h.w.document.addEventListener('visibilitychange',()=>{
+    if(h.w.document.hidden){pausedByVisibility=playing;playing=false;}
+    else if(pausedByVisibility){playing=true;pausedByVisibility=false;restores++;}
+  });
+  h.hide();assert.equal(playing,false);
+  h.control('on');assert.equal(playing,true);assert.equal(restores,1);
+  h.control('on');h.hide();assert.equal(restores,1);assert.equal(playing,true);
+  h.control('off');assert.equal(playing,false);h.close();
+});
+
+test('starting in a hidden tab preserves a player pause unrelated to visibility', () => {
+  const h=setup();let playing=false,pausedByVisibility=false;
+  h.w.document.addEventListener('visibilitychange',()=>{
+    if(h.w.document.hidden){pausedByVisibility=playing;playing=false;}
+    else if(pausedByVisibility){playing=true;pausedByVisibility=false;}
+  });
+  h.hide();h.control('on');assert.equal(playing,false);h.close();
+});
+
+test('a live content script survives a delayed background clock beyond the old lease', () => {
+  const h=setup();let frames=0;
+  h.w.addEventListener('lesson-assistant:playback-pulse',()=>h.control('on'));
+  h.control('on');h.hide();h.w.requestAnimationFrame(()=>frames++);
+  h.advance(60000);assert.equal(h.status.active,true);assert.equal(frames,1);
+  assert.equal(h.w.document.hidden,false);h.close();
+});
+
 test('blocked worker falls back with explicit diagnostic and releases fallback timer on STOP', () => {
   const h = setup(true); h.control('on');
   assert.equal(h.status.clock, 'timer'); assert.match(h.status.problem, /chặn/);
@@ -132,6 +161,13 @@ test('extension reload invalidation stops the main-world clock on the next pulse
   const h = setup(); await attachContent(h); h.hide();
   delete h.w.chrome.runtime.id; h.advance(400);
   assert.equal(h.status.active, false); assert.equal(h.w.document.hidden, true); h.close();
+});
+
+test('content/main bridge renews after a long stall and still honors Stop and invalidation', async () => {
+  const h=setup();const send=await attachContent(h);h.hide();
+  h.advance(60000);await Promise.resolve();assert.equal(h.status.active,true);
+  delete h.w.chrome.runtime.id;h.advance(60000);await Promise.resolve();
+  assert.equal(h.status.active,false);send({type:'STOP'});h.close();
 });
 
 test('completion waits for full timeline, then disables background playback', async () => {

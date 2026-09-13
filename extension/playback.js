@@ -10,6 +10,7 @@
   const caf = window.cancelAnimationFrame.bind(window);
   const now = performance.now.bind(performance);
   const frames = new Map();
+  const ownVisibilityEvents = new WeakSet();
   let active = false, worker = null, timer = null, workerURL = null;
   let lease = 0, lastPulse = 0, clockMode = 'off', problem = '';
   function descriptor(object, name) {
@@ -32,9 +33,19 @@
   document.hasFocus = () => active || realFocus();
   const hookProblem = problem;
   function suppress(event) {
-    if (active && (event.type !== 'blur' || event.target === window || event.target === document)) event.stopImmediatePropagation();
+    if (active && !ownVisibilityEvents.has(event) && (event.type !== 'blur' || event.target === window || event.target === document)) event.stopImmediatePropagation();
   }
   for (const type of ['visibilitychange', 'webkitvisibilitychange', 'blur']) window.addEventListener(type, suppress, true);
+  function notifyVisible() {
+    // The player may already have processed "hidden" while AI was preparing.
+    // Changing getters alone cannot release that existing visibility pause.
+    // Let the player restore its own prior playback state; never click Play.
+    for (const type of ['visibilitychange', 'webkitvisibilitychange']) {
+      const event = new Event(type, {bubbles: true});
+      ownVisibilityEvents.add(event);
+      document.dispatchEvent(event);
+    }
+  }
 
   // Keep native RAF IDs and cancellation semantics. A pending callback is invoked
   // at most once. The fallback uses actual elapsed time, never a fabricated clock.
@@ -54,14 +65,15 @@
   function pulse() {
     if (!active) return;
     const time = now();
-    // Renewed by the isolated content script. If it disappears, restore behavior
-    // before invoking any player callbacks, including after a frozen-tab wakeup.
-    if (time - lease > 15000) { disable(); return; }
-    if (time - lastPulse >= 350) {
+    // Ask the isolated script to renew first: delayed timers are not evidence
+    // that it disappeared. Its synchronous response also checks runtime validity.
+    // If no live script responds, stop before invoking any player callbacks.
+    if (time - lastPulse >= 350 || time - lease > 15000) {
       lastPulse = time;
       window.dispatchEvent(new Event(PULSE));
       if (!active) return;
     }
+    if (time - lease > 15000) { disable(); return; }
     const hidden = realHidden();
     const batch = [...frames];
     for (const [id, entry] of batch) {
@@ -94,6 +106,7 @@
       worker.onerror = () => { if (active) fallbackClock(); };
       clockMode = 'worker';
     } catch { fallbackClock(); }
+    if (realHidden()) notifyVisible();
     report();
   }
   function disable() {

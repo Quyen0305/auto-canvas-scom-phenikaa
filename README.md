@@ -1,6 +1,6 @@
 # Auto Canvas SCOM Phenikaa
 
-Tiện ích Chrome hỗ trợ trắc nghiệm Canvas, theo dõi bài học SCORM và xuất câu hỏi đã có đáp án đúng ra Excel. Phiên bản hiện tại: **2.2.3**.
+Tiện ích Chrome hỗ trợ trắc nghiệm Canvas, theo dõi bài học SCORM và xuất câu hỏi đã có đáp án đúng ra Excel. Phiên bản hiện tại: **2.2.4**.
 
 Tên repository giữ chữ `scom`; tên kỹ thuật của định dạng bài học là **SCORM**. Khi cài vào Chrome, tiện ích hiển thị tên **Trợ lý học tập · Canvas & SCORM**.
 
@@ -100,6 +100,8 @@ Khi đang chạy, tiện ích:
 
 Nếu không nhận diện được timeline, câu hỏi hoặc phản hồi, tiện ích có thể chờ hoặc dừng để bạn kiểm tra. Bản này được xây dựng theo giao diện Storyline/SCORM đã quan sát, không phải bộ điều khiển chung cho mọi hệ thống SCORM.
 
+Bản 2.2.4 sửa việc bắt đầu sau khi tab đã bị ẩn: trình phát được thông báo trạng thái hiển thị mới để khôi phục phần đã tạm dừng do đổi tab. Khi Chrome trì hoãn bộ định nhịp, tiện ích kiểm tra lại phiên chạy trước khi quyết định tắt hỗ trợ nền. Nút tạm dừng thủ công và điểm dừng câu hỏi vẫn do trình phát quản lý.
+
 ## 4. Xuất câu hỏi Excel
 
 Nút **Xuất câu hỏi Excel** lấy kho đã lưu của **cả Canvas lẫn SCORM**, không phụ thuộc thẻ đang chọn trong popup.
@@ -161,6 +163,7 @@ Cấu hình và kho câu hỏi nằm trong hồ sơ Chrome, không nằm trong t
 | Đã làm bài nhưng chưa có câu để xuất | Mở trang kết quả. Mỗi câu cần bằng chứng chấm đúng; chỉ được AI chọn đáp án chưa đủ điều kiện. |
 | Tổng bài đạt 10 nhưng không xuất đủ số câu | Kiểm tra điểm và lựa chọn hiển thị ở từng câu. Câu thiếu dữ liệu, mâu thuẫn hoặc trùng sẽ không được xuất như câu độc lập mới. |
 | SCORM chờ mãi ở timeline hoặc nút tiếp tục | Kiểm tra video đang phát, nút đã mở khóa và câu hỏi đã hiện đủ; giao diện khác mẫu nhận diện có thể cần chỉnh mã nguồn. |
+| Video dừng khi đổi tab | Sau khi cập nhật, tải lại tiện ích **và F5 trang học**, rồi bấm Bắt đầu. Chỉ tải lại tiện ích chưa thay được mã chạy nền đã nạp vào trang cũ. Nếu Chrome đóng băng tab hoặc máy ngủ, mã trong trang cũng không thể chạy trong thời gian đó. |
 | Canvas dừng trước khi đạt 10 | Đọc thông báo: có thể bài hết lượt, khóa, thiếu kết quả từng câu, AI lỗi hoặc điểm tối đa dưới 10. |
 
 ## 7. Dữ liệu và quyền truy cập
@@ -209,7 +212,7 @@ npm ci
 npm test
 ```
 
-Bản 2.2.3 đã đạt **145 kiểm thử**. Các kiểm thử sử dụng dữ liệu mô phỏng, không đăng nhập hay nộp bài trên tài khoản thật. Phạm vi gồm cấu hình AI, luồng Canvas/SCORM, tạo và kết nối lại tài liệu AI ẩn, hủy thao tác, lưu lịch sử, lọc trùng, bảo vệ dữ liệu và xuất file. Bộ kiểm thử không chạy mô hình Gemini Nano thực tế; khả năng suy luận trong tài liệu ẩn cần được kiểm tra thêm trên Chrome/phần cứng đang sử dụng. Đây không phải bảo đảm tương thích với mọi phiên bản giao diện của hệ thống học.
+Bản 2.2.4 đã đạt **149 kiểm thử**. Các kiểm thử sử dụng dữ liệu mô phỏng, không đăng nhập hay nộp bài trên tài khoản thật. Phạm vi gồm cấu hình AI, luồng Canvas/SCORM, khởi động trong tab ẩn và khôi phục sau khi bộ định nhịp bị trễ, tạo và kết nối lại tài liệu AI ẩn, hủy thao tác, lưu lịch sử, lọc trùng, bảo vệ dữ liệu và xuất file. Bộ kiểm thử không chạy mô hình Gemini Nano thực tế; khả năng suy luận trong tài liệu ẩn cần được kiểm tra thêm trên Chrome/phần cứng đang sử dụng. Đây không phải bảo đảm tương thích với mọi phiên bản giao diện của hệ thống học.
 
 ### Đồng bộ mã Canvas gốc
 
