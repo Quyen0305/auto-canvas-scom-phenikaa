@@ -84,9 +84,9 @@ Mở bài kiểm tra Canvas. Chọn chế độ trong popup hoặc bảng điề
 
 Phần Canvas hiện xử lý giao diện **Classic Quizzes** có lựa chọn một đáp án (`radio`) hoặc nhiều đáp án (`checkbox`). Chưa hỗ trợ đầy đủ New Quizzes nằm trong iframe khác, câu tự luận, kéo thả hoặc câu chỉ có ảnh mà không đọc được nội dung chữ.
 
-### SCORM
+### SCORM (video bài giảng)
 
-1. Mở bài học tại `scorm.eduone.io.vn` và bắt đầu phát nội dung.
+1. Mở video bài giảng bất kỳ trên canvas và bắt đầu phát nội dung.
 2. Mở popup, chọn **SCORM → Bắt đầu**.
 3. Theo dõi trạng thái trong popup; bấm **Dừng** khi muốn kết thúc thủ công.
 
