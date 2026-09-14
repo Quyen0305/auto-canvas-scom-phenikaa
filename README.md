@@ -1,6 +1,6 @@
 # Auto Canvas SCOM Phenikaa
 
-Tiện ích Chrome hỗ trợ làm bài trắc nghiệm trên Canvas, xem video bài giảng và làm bài tập theo dõi bài học SCORM và xuất câu hỏi đã có đáp án đúng ra Excel. Phiên bản hiện tại: **2.2.8**.
+Tiện ích Chrome hỗ trợ làm bài trắc nghiệm trên Canvas, xem video bài giảng và làm bài tập theo dõi bài học SCORM và xuất câu hỏi đã có đáp án đúng ra Excel. Phiên bản hiện tại: **2.2.9**.
 
 Tên repository giữ chữ `scom`; tên kỹ thuật của định dạng bài học là **SCORM**. Khi cài vào Chrome, tiện ích hiển thị tên **Trợ lý học tập · Canvas & SCORM**.
 
@@ -52,7 +52,13 @@ Bấm biểu tượng tiện ích để mở cửa sổ điều khiển, gọi l
 
 Sau khi lưu, ô nhập được làm trống để che key. **Ô trống không có nghĩa là key đã bị xóa**; muốn thay key, nhập key mới vào cùng ô.
 
-Menu hiện có Gemini 2.5 Flash, Gemini 3.7 Flash, Gemini 1.5 Flash và Gemini 2.0 Flash. Đây là danh sách trong mã nguồn, không phải cam kết mọi model còn được Google cung cấp hoặc có quota trong tài khoản của bạn. Nếu model báo không khả dụng, chọn model khác mà project hỗ trợ. Chi phí và hạn mức phụ thuộc dịch vụ Gemini API bạn sử dụng.
+Từ bản 2.2.9, menu dùng chung có các nhóm sau, đối chiếu [danh sách model của Google](https://ai.google.dev/gemini-api/docs/models) ngày 14/09/2026:
+
+- **Gemini API:** 3.8 Flash, 3.7 Flash, 3.6 Flash, 3.5 Flash, 3.5 Flash-Lite, 3.1 Flash-Lite, 2.5 Pro, 2.5 Flash và 2.5 Flash-Lite.
+- **Preview:** 3.1 Pro (`gemini-3.1-pro-preview`) và 3 Flash (`gemini-3-flash-preview`).
+- **Mô hình cũ:** giữ 1.5 Flash và 2.0 Flash để hiển thị cấu hình cũ. Google đã ngừng cung cấp 2.0 Flash; nên chuyển sang model còn hỗ trợ.
+
+Lựa chọn đã lưu và API key được giữ nguyên khi cập nhật; người cài mới vẫn mặc định Gemini 2.5 Flash. Đây là danh sách tĩnh trong tiện ích, không phải danh sách quota của tài khoản. Nếu model báo không khả dụng, chọn model khác mà project hỗ trợ. Chi phí và hạn mức phụ thuộc dịch vụ Gemini API bạn sử dụng. Danh sách chỉ bổ sung các model trả lời văn bản phù hợp với bộ giải hiện tại; không thêm model chuyên tạo ảnh, giọng nói hoặc video.
 
 ### Dùng Chrome AI
 
@@ -223,7 +229,7 @@ npm ci
 npm test
 ```
 
-Bản 2.2.8 đã đạt **182 kiểm thử**. Các kiểm thử sử dụng dữ liệu mô phỏng, không đăng nhập hay nộp bài trên tài khoản thật. Phạm vi gồm cấu hình AI, luồng Canvas/SCORM, đối chiếu đáp án khi đảo lựa chọn, quay lại đúng video và xác nhận tua 98%, bật chạy nền trước khi chuẩn bị AI, khởi động trong tab ẩn và khôi phục sau khi bộ định nhịp bị trễ, tạo và kết nối lại tài liệu AI ẩn, hủy thao tác, lưu lịch sử, lọc trùng, bảo vệ dữ liệu và xuất file. Bộ kiểm thử không chạy mô hình Gemini Nano thực tế; khả năng suy luận trong tài liệu ẩn và thao tác tua cần được kiểm tra thêm trên Chrome/trang học đang sử dụng. Đây không phải bảo đảm tương thích với mọi phiên bản giao diện của hệ thống học.
+Bản 2.2.9 đã đạt **182 kiểm thử**. Các kiểm thử sử dụng dữ liệu mô phỏng, không đăng nhập hay nộp bài trên tài khoản thật. Phạm vi gồm cấu hình AI, luồng Canvas/SCORM, đối chiếu đáp án khi đảo lựa chọn, quay lại đúng video và xác nhận tua 98%, bật chạy nền trước khi chuẩn bị AI, khởi động trong tab ẩn và khôi phục sau khi bộ định nhịp bị trễ, tạo và kết nối lại tài liệu AI ẩn, hủy thao tác, lưu lịch sử, lọc trùng, bảo vệ dữ liệu và xuất file. Bộ kiểm thử không chạy mô hình Gemini Nano thực tế; khả năng suy luận trong tài liệu ẩn và thao tác tua cần được kiểm tra thêm trên Chrome/trang học đang sử dụng. Đây không phải bảo đảm tương thích với mọi phiên bản giao diện của hệ thống học.
 
 ### Đồng bộ mã Canvas gốc
 

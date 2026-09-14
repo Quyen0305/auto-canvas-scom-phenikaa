@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Trợ lý học tập · Canvas & SCORM",
-  "version": "2.2.8",
+  "version": "2.2.9",
   "description": "Hai công cụ trong một tiện ích: bài học SCORM và trắc nghiệm Canvas, hỗ trợ Gemini API và Chrome AI.",
   "minimum_chrome_version": "120",
   "permissions": ["storage", "unlimitedStorage", "activeTab", "scripting", "offscreen"],
