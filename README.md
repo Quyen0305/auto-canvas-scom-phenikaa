@@ -1,6 +1,6 @@
 # Auto Canvas SCOM Phenikaa
 
-Tiện ích Chrome hỗ trợ làm bài trắc nghiệm trên Canvas, xem video bài giảng và làm bài tập theo dõi bài học SCORM và xuất câu hỏi đã có đáp án đúng ra Excel. Phiên bản hiện tại: **2.2.7**.
+Tiện ích Chrome hỗ trợ làm bài trắc nghiệm trên Canvas, xem video bài giảng và làm bài tập theo dõi bài học SCORM và xuất câu hỏi đã có đáp án đúng ra Excel. Phiên bản hiện tại: **2.2.8**.
 
 Tên repository giữ chữ `scom`; tên kỹ thuật của định dạng bài học là **SCORM**. Khi cài vào Chrome, tiện ích hiển thị tên **Trợ lý học tập · Canvas & SCORM**.
 
@@ -106,6 +106,8 @@ Nếu không nhận diện được timeline, câu hỏi hoặc phản hồi, ti
 Từ bản 2.2.6, lịch sử thử đáp án SCORM được đối chiếu theo **nội dung câu hỏi và lựa chọn trong cùng mục bài học**, kể cả khi bài đảo vị trí đáp án. Lịch sử này dùng trong phiên Bắt đầu hiện tại. Với câu một đáp án, nếu AI lặp lựa chọn đã bị chấm sai, tiện ích thử một lựa chọn chưa bị loại. Mặc định tối đa 3 lần; nếu còn đúng một lựa chọn chưa bị chấm sai thì được thử thêm lựa chọn đó. Chỉ ghi nhận đúng khi bài học xác nhận, không coi lựa chọn thử là đáp án đúng để xuất Excel. Câu nhiều đáp án không áp dụng suy luận lựa chọn cuối; tiện ích dừng nếu AI tiếp tục đưa ra tổ hợp đã sai.
 
 Từ bản 2.2.7, bạn có thể bấm **Bắt đầu** ngay trên màn hình báo sai: tiện ích ghi nhớ mục bài học đang được chọn, bấm nút xem lại, đợi phần giới thiệu mở rồi chọn lại đúng mục video và tua khoảng 98%. Trường hợp này không tự tạo lịch sử cho đáp án đã gửi trước khi tiện ích chạy. Câu ôn tập vẫn được mở lại trực tiếp, không tua video.
+
+Bản 2.2.8 sửa lỗi chờ mãi ở bước nhận diện video trước khi tua. Storyline có thể gắn `aria-hidden="true"` lên đối tượng video đang hiển thị vì đã có phần tử riêng cho trình đọc màn hình. Tiện ích nhận diện riêng trường hợp này, vẫn bỏ qua video bị ẩn bằng CSS, slide ẩn và video tải trước trong thư viện của trình phát.
 
 Việc tua khi xem lại dùng sự kiện `change` của thanh thời gian Storyline, không sửa điểm hoặc trạng thái hoàn thành. Nếu trình phát không chấp nhận thao tác, mục video bị khóa hoặc không xác nhận được video đã tua, tiện ích dừng và báo lý do.
 
@@ -221,7 +223,7 @@ npm ci
 npm test
 ```
 
-Bản 2.2.7 đã đạt **174 kiểm thử**. Các kiểm thử sử dụng dữ liệu mô phỏng, không đăng nhập hay nộp bài trên tài khoản thật. Phạm vi gồm cấu hình AI, luồng Canvas/SCORM, đối chiếu đáp án khi đảo lựa chọn, quay lại đúng video và xác nhận tua 98%, bật chạy nền trước khi chuẩn bị AI, khởi động trong tab ẩn và khôi phục sau khi bộ định nhịp bị trễ, tạo và kết nối lại tài liệu AI ẩn, hủy thao tác, lưu lịch sử, lọc trùng, bảo vệ dữ liệu và xuất file. Bộ kiểm thử không chạy mô hình Gemini Nano thực tế; khả năng suy luận trong tài liệu ẩn và thao tác tua cần được kiểm tra thêm trên Chrome/trang học đang sử dụng. Đây không phải bảo đảm tương thích với mọi phiên bản giao diện của hệ thống học.
+Bản 2.2.8 đã đạt **182 kiểm thử**. Các kiểm thử sử dụng dữ liệu mô phỏng, không đăng nhập hay nộp bài trên tài khoản thật. Phạm vi gồm cấu hình AI, luồng Canvas/SCORM, đối chiếu đáp án khi đảo lựa chọn, quay lại đúng video và xác nhận tua 98%, bật chạy nền trước khi chuẩn bị AI, khởi động trong tab ẩn và khôi phục sau khi bộ định nhịp bị trễ, tạo và kết nối lại tài liệu AI ẩn, hủy thao tác, lưu lịch sử, lọc trùng, bảo vệ dữ liệu và xuất file. Bộ kiểm thử không chạy mô hình Gemini Nano thực tế; khả năng suy luận trong tài liệu ẩn và thao tác tua cần được kiểm tra thêm trên Chrome/trang học đang sử dụng. Đây không phải bảo đảm tương thích với mọi phiên bản giao diện của hệ thống học.
 
 ### Đồng bộ mã Canvas gốc
 

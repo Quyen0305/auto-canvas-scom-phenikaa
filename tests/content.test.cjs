@@ -499,7 +499,7 @@ test('choice order changing while AI is running discards its old positional answ
   assert.equal([...h.doc.querySelectorAll('input')].some(x=>x.checked),false);h.close();
 });
 
-async function videoRetryFixture({acceptSeek=true,review=false,locked=false,startOnQuestion=false,startOnWrong=false,retryLabel='Học lại'}={}) {
+async function videoRetryFixture({acceptSeek=true,review=false,locked=false,startOnQuestion=false,startOnWrong=false,retryLabel='Học lại',storylineVideo=false}={}) {
   const h=await setup(`${reviewMenu()}<div class="slide"></div><input data-ref="progressBar" type="range" max="100000" value="10000" disabled><button id="next">Tiếp theo</button>`);
   const slide=h.doc.querySelector('.slide'),range=h.doc.querySelector('[data-ref="progressBar"]');
   let seeks=0,opens=0,next=0,retries=0;
@@ -508,7 +508,7 @@ async function videoRetryFixture({acceptSeek=true,review=false,locked=false,star
     h.doc.getElementById('slide-label').textContent='slide: '+h.doc.querySelector(`[data-ref="${ref}"]`).dataset.slideTitle;
   };
   const video=()=>{
-    slide.innerHTML='<video></video>';range.value='10000';
+    slide.innerHTML=storylineVideo?'<div class="slide-object slide-object-video shown" aria-hidden="true"><div class="video-slide-object"><div class="video-player-limited-container"><div class="modern-video"><video></video></div></div></div></div>':'<video></video>';range.value='10000';
     Object.defineProperty(slide.querySelector('video'),'duration',{value:100});
     slide.querySelector('video').currentTime=10;
   };
@@ -543,6 +543,40 @@ test('wrong video answer returns to exact video and seeks 98% using the player c
 test('starting on a question with its visible video also captures the retry target',async()=>{
   const r=await videoRetryFixture({startOnQuestion:true});
   await r.h.step();await r.h.step();await r.h.step();assert.equal(r.counts().seeks,1);r.h.close();
+});
+
+test('observed Storyline aria-hidden visual video is sought and confirmed after returning from wrong answer',async()=>{
+  const r=await videoRetryFixture({storylineVideo:true,retryLabel:'TIẾP TỤC HỌC'});
+  await r.h.step();await r.h.step();await r.h.step();
+  assert.deepEqual(r.counts(),{seeks:1,opens:1,next:0,retries:1});
+  assert.equal(r.slide.querySelector('video').currentTime,98);
+  assert.equal(r.h.w.__lessonAssistant.diagnose().videoReturn,null);r.h.close();
+});
+
+for(const hidden of ['style="display:none"','style="visibility:hidden"','style="opacity:0"','hidden','inert']) {
+  test(`Storyline aria-hidden exception does not seek CSS/HTML hidden video: ${hidden}`,async()=>{
+    const r=await videoRetryFixture({storylineVideo:true});
+    await r.h.step();
+    const wrapper=r.slide.querySelector('.slide-object-video');
+    const parsed=r.h.doc.createElement('div');parsed.innerHTML=`<div ${hidden}></div>`;
+    for(const attr of parsed.firstChild.attributes)wrapper.setAttribute(attr.name,attr.value);
+    await r.h.step();await r.h.step();assert.equal(r.counts().seeks,0);r.h.close();
+  });
+}
+
+test('Storyline fallback progress reads actual video while excluding preload media and hidden slides',async()=>{
+  const h=await setup('<div id="lib" class="offscreen"><div id="video-pen"><video id="preload"></video></div></div><div class="slide"><div class="slide-object-video shown" aria-hidden="true"><video id="actual"></video></div><div aria-hidden="true"><video id="hidden"></video></div><div class="offscreen"><video id="cached"></video></div></div>');
+  for(const id of ['preload','actual','hidden','cached'])Object.defineProperty(h.doc.getElementById(id),'duration',{value:id==='actual'?100:0.04644});
+  h.doc.getElementById('actual').currentTime=98;
+  assert.equal(h.snapshot().p.present,true);assert.equal(h.snapshot().p.done,false);assert.equal(h.snapshot().p.value,0.98);
+  h.doc.getElementById('actual').currentTime=100;assert.equal(h.snapshot().p.done,true);h.close();
+});
+
+test('an aria-hidden slide remains excluded even when its video object is marked shown',async()=>{
+  const r=await videoRetryFixture({storylineVideo:true});await r.h.step();
+  r.slide.querySelector('.slide-object-video').outerHTML=`<div aria-hidden="true">${r.slide.querySelector('.slide-object-video').outerHTML}</div>`;
+  const media=r.slide.querySelector('video');Object.defineProperty(media,'duration',{value:100});
+  await r.h.step();await r.h.step();assert.equal(r.counts().seeks,0);r.h.close();
 });
 
 for(const retryLabel of ['TIẾP TỤC HỌC','HỌC LẠI']) for(const startOnWrong of [false,true]) {

@@ -57,6 +57,19 @@
     return visible(el) && !el.disabled && !el.closest('[disabled], [aria-disabled="true"], .disabled, .cs-disabled') &&
       (getComputedStyle(el).pointerEvents !== 'none' || el.matches('.acc-shadow-el'));
   }
+  function visibleVideo(el) {
+    if (!el?.isConnected || el.closest('[hidden], [inert], #video-pen, #lib, .offscreen')) return false;
+    for (let p = el; p && p.nodeType === 1; p = p.parentElement) {
+      // Storyline renders its real video inside an aria-hidden visual object;
+      // a separate acc-shadow control represents it to screen readers. Ignore
+      // that specific accessibility marker, never CSS hiding or hidden slides.
+      if (p.getAttribute('aria-hidden') === 'true' && !p.matches('.slide-object-video.shown')) return false;
+      const css = getComputedStyle(p);
+      if (css.display === 'none' || css.visibility === 'hidden' || css.opacity === '0') return false;
+    }
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  }
   function text(el) {
     if (!el) return '';
     const labelled = (el.getAttribute('aria-labelledby') || '').split(/\s+/).map(id => document.getElementById(id)?.textContent || '').join(' ').trim();
@@ -194,7 +207,7 @@
     }
     if (route.openedAt && now - route.openedAt < S.config.settleMs) return true;
     if (snap.q && !snap.q.error) { S.videoReturn = null; return false; }
-    const media = query('video', snap.root).filter(visible).filter(v => Number.isFinite(v.duration) && v.duration > 0);
+    const media = query('video', snap.root).filter(visibleVideo).filter(v => Number.isFinite(v.duration) && v.duration > 0);
     if (!media.length || !snap.p.present || snap.p.value == null) { setStatus('Đợi đúng video và thanh thời gian sẵn sàng trước khi tua.'); return true; }
     if (route.phase === 'seeked') {
       // The player's media must also move: a changed slider value alone is not
@@ -241,7 +254,8 @@
     });
     // Prefer the actual slide timeline. Unknown bars must never be treated as full.
     if (bars.length) return {present: true, done: readings.every(r => r.done), value: readings.find(r => r.value != null)?.value ?? null, readings};
-    const videos = query('video').filter(visible);
+    const root = rootElement();
+    const videos = root ? query('video', root).filter(visibleVideo) : [];
     if (videos.length) return {present: true, done: videos.every(v => v.ended || (Number.isFinite(v.duration) && v.duration > 0 && v.currentTime >= v.duration - 0.08)), value: videos[0].duration > 0 ? videos[0].currentTime / videos[0].duration : null};
     return {present: false, done: false, value: null};
   }
