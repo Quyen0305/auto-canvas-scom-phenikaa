@@ -3,7 +3,7 @@ importScripts("chrome-ai.js");
 importScripts("quiz-learning.js");
 
 // All Gemini requests share a gate across tabs and the popup.
-const DEFAULT_MODEL = "gemini-2.5-flash";
+const DEFAULT_MODEL = "gemini-3.8-flash";
 const MIN_REQUEST_INTERVAL_MS = 6000;
 let requestInFlight = false;
 const CACHE_STORAGE_KEY = "geminiAnswerCacheV2";

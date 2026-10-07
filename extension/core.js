@@ -2,7 +2,7 @@
 (function (scope) {
   const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().replace(/\s+/g, ' ').trim();
   const defaults = {
-    provider: 'gemini', model: 'gemini-2.5-flash', maxAttempts: 3, settleMs: 1800, backgroundPlayback: true,
+    provider: 'gemini', model: 'gemini-3.8-flash', maxAttempts: 3, settleMs: 1800, backgroundPlayback: true,
     selectors: {root: '', progress: '', fill: '', next: '', submit: '', continue: '', retry: '', question: '', choices: '', correct: '', incorrect: '', complete: ''}
   };
   function validateAnswer(value, count, multiple) {

@@ -1,7 +1,7 @@
 (() => {
   const $=id=>document.getElementById(id);
   let mode='scorm',tabId,tabUrl='',loaded=false,working=false,closed=false,epoch=0,errorUntil=0;
-  let ai={engine:'gemini_api',model:'gemini-2.5-flash'},preparing=null,modelReady=false;
+  let ai={engine:'gemini_api',model:'gemini-3.8-flash'},preparing=null,modelReady=false;
   function notice(text,bad=false){if(closed)return;$('status').textContent=text;$('status').classList.toggle('error',bad);if(bad)errorUntil=Date.now()+7000;}
   async function settings(patch){
     const result=await chrome.runtime.sendMessage({action:'SUITE_SETTINGS',...(patch?{data:patch}:{})});

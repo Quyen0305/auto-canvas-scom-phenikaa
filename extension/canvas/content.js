@@ -318,8 +318,8 @@
         return { answers };
       }
       // Preserve fallback for a missing model, but never switch models to evade 429.
-      if (response.code === "HTTP_404" && config.aiModel !== "gemini-2.5-flash") {
-        config.aiModel = "gemini-2.5-flash";
+      if (response.code === "HTTP_404" && config.aiModel !== "gemini-3.8-flash") {
+        config.aiModel = "gemini-3.8-flash";
         continue;
       }
       if (response.code !== "COOLDOWN") failures++;
@@ -910,7 +910,7 @@
         {
           aiEngine: "gemini_api",
           apiKey: "",
-          aiModel: "gemini-2.5-flash",
+          aiModel: "gemini-3.8-flash",
           autoDelay: 3,
           autoClickAnswer: true,
           autoNextQuestion: false,

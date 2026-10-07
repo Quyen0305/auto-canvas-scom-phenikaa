@@ -7,7 +7,7 @@ globalThis.SuiteSettings = (() => {
     const old=data['suite:ai'];
     const source=old || {
       engine:data['canvas:aiEngine'] || (data.config?.provider==='builtin'?'chrome_ai':'gemini_api'),
-      model:data['canvas:aiModel'] || data.config?.model || 'gemini-2.5-flash'
+      model:data['canvas:aiModel'] || data.config?.model || 'gemini-3.8-flash'
     };
     const ai={engine:patch.engine ?? source.engine,model:patch.model ?? source.model};
     if(!['chrome_ai','gemini_api'].includes(ai.engine) || !/^gemini-[a-zA-Z0-9.-]+$/.test(ai.model))throw Error('Mô hình AI không hợp lệ.');
