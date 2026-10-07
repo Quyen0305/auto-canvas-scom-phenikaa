@@ -105,5 +105,11 @@ globalThis.QuestionBank = (() => {
     const verified = answers.length > 0 && !conflict && !ambiguous;
     return {verified, answers: verified ? answers : [], status: conflict ? 'Kết quả chấm mâu thuẫn' : ambiguous ? 'Lựa chọn trùng nội dung, cần kiểm tra' : verified ? 'Đã được bài chấm đúng' : 'Chưa xác nhận đáp án đúng'};
   }
-  return {record, captureCanvas, failure, list, result, clean};
+  async function erase() {
+    await queue;
+    const all = await chrome.storage.local.get(null);
+    const keys = Object.keys(all).filter(key => key.startsWith(PREFIX) || key === ERROR);
+    if (keys.length) await chrome.storage.local.remove(keys);
+  }
+  return {record, captureCanvas, failure, list, result, clean, erase};
 })();

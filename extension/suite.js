@@ -152,6 +152,7 @@
           else resolve(response);
         });
       });
+      await QuestionBank.erase();
       status.textContent='Đã xoá Cache thành công.';
     } catch(error) { status.textContent='Lỗi: '+error.message; }
     finally { setTimeout(()=>button.disabled=false,2000); }
