@@ -29,7 +29,7 @@ test('Chrome AI checks language capabilities and translates fields without chang
   assert.deepEqual([...data.history[0].answers],[1]);assert.equal(data.history[0].confirmedWrong,true);
   assert.equal(data.history[0].feedback,'EN:Sai');
   assert.equal(JSON.stringify(h.calls.find(c=>c[0]==='availability')[1]),JSON.stringify(h.calls.find(c=>c[0]==='model')[1].expectedInputs ? {
-    expectedInputs:h.calls.find(c=>c[0]==='model')[1].expectedInputs,expectedOutputs:h.calls.find(c=>c[0]==='model')[1].expectedOutputs
+    expectedInputs:h.calls.find(c=>c[0]==='model')[1].expectedInputs,expectedOutputs:h.calls.find(c=>c[0]==='model')[1].expectedOutputs,expectedLanguage:'en'
   } : {}));
   assert.ok(h.calls.find(c=>c[0]==='prompt')[2].responseConstraint);
   assert.deepEqual(h.destroyed,['clone']);h.engine.destroy();

@@ -2,7 +2,8 @@
 (() => {
   const modelOptions = {
     expectedInputs: [{type: 'text', languages: ['en']}],
-    expectedOutputs: [{type: 'text', languages: ['en']}]
+    expectedOutputs: [{type: 'text', languages: ['en']}],
+    expectedLanguage: 'en'
   };
   const inputPair = {sourceLanguage: 'vi', targetLanguage: 'en'};
   const outputPair = {sourceLanguage: 'en', targetLanguage: 'vi'};

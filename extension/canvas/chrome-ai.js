@@ -45,6 +45,7 @@ globalThis.ChromeAi = (() => {
       }
       return await api.create({
         signal,
+        expectedLanguage: "en",
         monitor(monitor) {
           monitor.addEventListener("downloadprogress", event => {
             const fraction = event.total ? event.loaded / event.total : event.loaded;
