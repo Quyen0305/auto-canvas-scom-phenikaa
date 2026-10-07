@@ -1,8 +1,8 @@
 {
   "source": "Canvas extension, original functionality preserved inside wrappers",
   "sha256": {
-    "background.js": "276d4883a05f3e2fc59ba4efea2a6c29d61a676951c562c126505ba3d44cda5a",
-    "content.js": "440e60c24217d3280d7745b108e830ef6014c1871bdd307aeeb143eeb66c5ddb",
+    "background.js": "46d9ac8b7699b6693c02bca55f6f40dca681d815fb4b8826b00d512b9605fe68",
+    "content.js": "45e53895cde6b5d4484549e2910131ff50a3599b2362bb455c92b9880057be95",
     "popup.js": "90c2175e252829dd346bac769044b5cfe5141ec81e256a28477bcd8d230f563f",
     "quiz-learning.js": "cd862786ee5190abf012ecd87ef0fb92d0ffc01f9c699be8a452750e21da7bfe",
     "chrome-ai.js": "f1a7e13a8f00cbf5ce37bbfbff596dbc9e669255fe12154abbc07f1c1eddc46c",
@@ -11,8 +11,8 @@
     "popup.html": "d8692a2e10db352c4eb65ea78b34de501ae035e14bd8cff420f36420b16adc31"
   },
   "normalizedSha256": {
-    "content.js": "440e60c24217d3280d7745b108e830ef6014c1871bdd307aeeb143eeb66c5ddb",
-    "background.js": "c25a60ab7e29e7efc5bf409486400dd19748ef727eeff05a4ed6ba79133c70d4",
+    "content.js": "07a3a140a7d7eb552c1a6a32a4e9bb77b370445411602c0c7afb963fd552b1f2",
+    "background.js": "f430b9e9b76edc4d3ef5ef469b1efc4226eba93fdabf48ba4e249ab0aec2cdea",
     "quiz-learning.js": "cd862786ee5190abf012ecd87ef0fb92d0ffc01f9c699be8a452750e21da7bfe",
     "chrome-ai.js": "f1a7e13a8f00cbf5ce37bbfbff596dbc9e669255fe12154abbc07f1c1eddc46c",
     "styles.css": "b047546e0a1bd184d3baa5c8a886fcba924a154d63af549659565379d781f4b5"

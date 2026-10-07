@@ -142,6 +142,20 @@
     } catch(error) { status.textContent=error.message; }
     finally { button.disabled=false; }
   });
+  $('clear-cache').addEventListener('click',async()=>{
+    const button=$('clear-cache'),status=$('export-status');
+    if(button.disabled)return;button.disabled=true;status.textContent='Đang xoá cache…';
+    try {
+      await new Promise((resolve,reject)=>{
+        chrome.runtime.sendMessage({action:'CLEAR_ANSWER_CACHE'},response=>{
+          if(chrome.runtime.lastError)reject(chrome.runtime.lastError);
+          else resolve(response);
+        });
+      });
+      status.textContent='Đã xoá Cache thành công.';
+    } catch(error) { status.textContent='Lỗi: '+error.message; }
+    finally { setTimeout(()=>button.disabled=false,2000); }
+  });
   $('start').addEventListener('click',()=>start('START'));
   $('canvas-auto').addEventListener('click',()=>start('auto'));
   $('canvas-target').addEventListener('click',()=>start('target'));

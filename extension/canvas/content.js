@@ -17,9 +17,25 @@
     activeSolve?.abort();
     clearTimeout(resumeTimer);
     document.removeEventListener("DOMContentLoaded", initWidget);
+    document.removeEventListener("keydown", handleKeyDown);
     cleanupDrag();
     document.getElementById("canvas-ai-solver-widget")?.remove();
   };
+
+  function handleKeyDown(e) {
+    if (destroyed || activeSolve || isAutoRunning) return;
+    if (!document.getElementById("canvas-ai-solver-widget")) return;
+    const target = e.target;
+    if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable || target.getAttribute("contenteditable") === "true")) {
+      return;
+    }
+    if ((e.key === "x" || e.key === "X") && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      e.preventDefault();
+      solveCurrentQuestion(true);
+    }
+  }
+  document.addEventListener("keydown", handleKeyDown);
+
   // Keep these batch limits in sync with background.js.
   const MAX_BATCH_QUESTIONS = 10;
   const MAX_BATCH_CHARS = 24000;
@@ -388,7 +404,7 @@
     panel.appendChild(card);
   }
 
-  async function solveCurrentQuestion() {
+  async function solveCurrentQuestion(forceAutoClick = false) {
     if (activeSolve) return false;
     completedRun = null;
     const controller = new AbortController();
@@ -405,7 +421,8 @@
       }));
       if (!questions.length) throw new Error("Không tìm thấy câu hỏi nào!");
       const config = await getStoredConfig();
-      if (targetMode) { config.autoClickAnswer = true; config.autoNextQuestion = true; }
+      if (targetMode || forceAutoClick) { config.autoClickAnswer = true; }
+      if (targetMode) { config.autoNextQuestion = true; }
       let pending = questions;
       let cachedCount = 0;
       let solvedCount = 0;
