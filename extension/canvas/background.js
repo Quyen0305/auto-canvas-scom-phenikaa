@@ -226,8 +226,8 @@ function parseApiError(res, text, attempt) {
     const match = message.match(/retry\s+(?:in|after)\s+([\d.]+)s/i);
     const delays = [headerMs, ...retryInfo.map(info => parseRetryDelay(info.retryDelay)), match ? Number(match[1]) * 1000 : 0];
     const serverDelay = Math.max(0, ...delays.filter(Number.isFinite));
-    const fallback = Math.min(60000 * (2 ** attempt), 300000);
-    const waitMs = Math.ceil(Math.max(serverDelay, serverDelay > 0 ? 1000 : fallback)) + 1000;
+    const fallback = Math.min(5000 * (2 ** attempt), 10000);
+    const waitMs = Math.min(10000, Math.ceil(Math.max(serverDelay, serverDelay > 0 ? 1000 : fallback)) + 1000);
     return apiError(`Gemini đang giới hạn tần suất (429). Chờ ${Math.ceil(waitMs / 1000)} giây trước khi thử lại.`, "RATE_LIMIT", true, waitMs);
   }
   if ([500, 502, 503, 504].includes(res.status)) {
