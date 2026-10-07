@@ -494,8 +494,7 @@ ${JSON.stringify(questions)}`;
     generationConfig: {
       temperature: 0.1, topP: 0.95, responseMimeType: "application/json",
       responseJsonSchema: batchResponseSchema(questions)
-    },
-    tools: [{ googleSearch: {} }]
+    }
   });
   const parsed = parseGeneratedJson(json);
   const expected = new Map(questions.map(q => [q.id, q]));

@@ -198,8 +198,7 @@ async function solve(id, session, question, frameId) {
         contents: [{role: 'user', parts: [{text: JSON.stringify(question)}]}],
         generationConfig: {responseMimeType: 'application/json', responseSchema: {
           type: 'OBJECT', properties: {answers: {type: 'ARRAY', items: {type: 'INTEGER'}}, reason: {type: 'STRING'}}, required: ['answers', 'reason']
-        }},
-        tools: [{ googleSearch: {} }]
+        }}
       })
     });
     if (!response.ok) {
