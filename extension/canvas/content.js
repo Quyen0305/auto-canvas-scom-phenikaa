@@ -392,7 +392,7 @@
     panel.style.display = "block";
     const card = document.createElement("section");
     const title = document.createElement("strong");
-    title.textContent = answer.inferred ? "Loại trừ • Canvas" : (answer.cached ? "Cache • " : "AI • ") + answer.source;
+    title.textContent = "AI • " + answer.source;
     const questionEl = document.createElement("p");
     questionEl.textContent = question.text;
     const chosen = document.createElement("p");
@@ -409,6 +409,10 @@
     completedRun = null;
     const controller = new AbortController();
     activeSolve = controller;
+    // API backoff can exceed the worker idle timeout. Retain RAM state while solving.
+    const heartbeat = setInterval(() => {
+      if (!destroyed && !controller.signal.aborted) void sendBackground("SUITE_HEARTBEAT", {}).catch(() => {});
+    }, 15000);
     setSolveButtonsDisabled(true);
     document.getElementById("canvas-ai-stop").style.display = "block";
     try {
@@ -424,7 +428,6 @@
       if (targetMode || forceAutoClick) { config.autoClickAnswer = true; }
       if (targetMode) { config.autoNextQuestion = true; }
       let pending = questions;
-      let cachedCount = 0;
       let solvedCount = 0;
       const applied = [];
       const applyAnswers = (group, answers) => {
@@ -474,7 +477,6 @@
             }
           });
           solvedCount++;
-          if (answer.cached) cachedCount++;
           applied.push({ question: q, answer });
         }
         if (config.autoClickAnswer) verifyPageAnswers(applied, true);
@@ -493,35 +495,25 @@
 
       if (pending.length) {
         throwIfCancelled(controller.signal);
-        updateStatus("⏳ Đang kiểm tra đáp án đã lưu...", "running");
-        const lookup = await sendBackground("GET_CACHED_ANSWERS", {
-          model: config.aiModel, questions: pending.map(serializeQuestion)
-        });
-        throwIfCancelled(controller.signal);
-        if (!lookup.success) throw new Error(lookup.error);
-        const cached = lookup.data.answers;
-        if (!Array.isArray(cached)) throw new Error("Phản hồi cache không hợp lệ.");
-        const cachedIds = new Set(cached.map(answer => answer.id));
-        applyAnswers(pending.filter(q => cachedIds.has(q.requestId)), cached);
-        pending = pending.filter(q => !cachedIds.has(q.requestId));
         const groups = groupQuestions(pending);
         for (let index = 0; index < groups.length; index++) {
           throwIfCancelled(controller.signal);
           updateStatus("⏳ Đang giải nhóm " + (index + 1) + "/" + groups.length +
-            " (" + groups[index].length + " câu); " + cachedCount + " câu từ cache...", "running");
+            " (" + groups[index].length + " câu)...", "running");
           const result = await callGeminiApi(config, groups[index], controller.signal);
           applyAnswers(groups[index], result.answers);
         }
       }
       if (config.autoClickAnswer) await saveCanvasProgress(applied, controller.signal);
       updateStatus("✅ Đã " + (config.autoClickAnswer ? "tích chọn" : "đánh dấu") + " đáp án cho " +
-        solvedCount + " câu (" + cachedCount + " câu từ cache).", "success");
+        solvedCount + " câu.", "success");
       completedRun = { applied, autoClickAnswer: config.autoClickAnswer };
       return true;
     } catch (error) {
       reportError(error);
       return false;
     } finally {
+      clearInterval(heartbeat);
       activeSolve = null;
       setSolveButtonsDisabled(isAutoRunning);
       if (!destroyed && !isAutoRunning) document.getElementById("canvas-ai-stop").style.display = "none";
@@ -717,11 +709,6 @@
 
   async function saveReview() {
     const review = readReview();
-    if (review.observations.length) {
-      const result = await checkedBackground("RECORD_QUIZ_RESULTS", { observations: review.observations });
-      review.learnedCount = result.count;
-      updateStatus("Đã đọc kết quả " + review.score + " điểm; lưu phản hồi chấm cho " + result.count + " câu.", "success");
-    }
     return review;
   }
 
@@ -774,7 +761,6 @@
           return;
         }
         if (review.possible < 10) throw new Error("Điểm tối đa của bài nhỏ hơn 10; không thể đạt mục tiêu này.");
-        if (!review.learnedCount || review.learnedCount !== review.questionCount) throw new Error("Canvas chưa cung cấp đủ điểm và lựa chọn đã nộp cho từng câu. Đã dừng để tránh lặp lại bài mà không học được kết quả.");
         if (state.phase === "retaking") throw new Error("Đã yêu cầu làm lại nhưng vẫn ở kết quả cũ. Kiểm tra điều kiện bắt đầu bài trước khi chạy tiếp.");
       } else if (document.querySelector("#submit_quiz_form")) {
         if (state.phase === "awaiting_result") throw new Error("Đã bấm nộp nhưng chưa có kết quả. Kiểm tra thông báo của Canvas trước khi tiếp tục.");

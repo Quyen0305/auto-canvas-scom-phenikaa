@@ -1,8 +1,8 @@
 importScripts('core.js');
 const ready = Promise.all([
   globalThis.SuiteSettings?.ensure(),
-  chrome.storage.local.setAccessLevel({accessLevel: 'TRUSTED_CONTEXTS'}),
-  chrome.storage.session.setAccessLevel({accessLevel: 'TRUSTED_CONTEXTS'})
+  (globalThis.SuiteStorage || chrome.storage).local?.setAccessLevel?.({accessLevel: 'TRUSTED_CONTEXTS'}),
+  (globalThis.SuiteStorage || chrome.storage).session?.setAccessLevel?.({accessLevel: 'TRUSTED_CONTEXTS'})
 ]);
 const pending = new Map();
 const builtinJobs = new Map();
@@ -36,7 +36,7 @@ async function openBuiltin() {
   try { await openingBuiltin; } finally { openingBuiltin = null; }
 }
 async function stopBuiltinRuns() {
-  const all = await chrome.storage.session.get(null);
+  const all = await (globalThis.SuiteStorage || chrome.storage).session.get(null);
   for (const [key, run] of Object.entries(all)) if (key.startsWith('tab:') && run.running && run.config?.provider === 'builtin') {
     await stop(Number(key.slice(4)), 'Chrome AI đã ngắt kết nối. Bấm Bắt đầu để tự khởi tạo lại.');
   }
@@ -96,12 +96,12 @@ async function solveBuiltin(id, session, question, frameId) {
   } finally { if (pending.get(key) === controller) pending.delete(key); }
 }
 const tabKey = id => `tab:${id}`;
-async function getRun(id) { return (await chrome.storage.session.get(tabKey(id)))[tabKey(id)]; }
+async function getRun(id) { return (await (globalThis.SuiteStorage || chrome.storage).session.get(tabKey(id)))[tabKey(id)]; }
 async function broadcast(id, message) { try { await chrome.tabs.sendMessage(id, message); } catch {} }
 async function stop(id, text = 'Đã dừng.') {
   starting.delete(id);
   const run = await getRun(id);
-  if (run) await chrome.storage.session.set({[tabKey(id)]: {...run, running: false, playbackOnly: false, needsPreparation: false, message: text}});
+  if (run) await (globalThis.SuiteStorage || chrome.storage).session.set({[tabKey(id)]: {...run, running: false, playbackOnly: false, needsPreparation: false, message: text}});
   for (const [key, controller] of pending) if (key.startsWith(`${id}:`)) controller.abort();
   await broadcast(id, {type: 'STOP', message: text});
 }
@@ -113,18 +113,19 @@ async function preparePlayback(id) {
   try {
     await stopped;
     if (!current()) return null;
-    const {config = {}, apiKey} = await chrome.storage.local.get(['config', 'apiKey']);
+    const {config = {}, apiKey: legacyKey} = await (globalThis.SuiteStorage || chrome.storage).local.get(['config', 'apiKey']);
+    const apiKey = globalThis.SuiteSettings ? await SuiteSettings.keyForTab(id) : legacyKey;
     const tab = await chrome.tabs.get(id);
     if (!current()) return null;
     if (!tab.url || new URL(tab.url).origin !== 'https://scorm.eduone.io.vn') throw new Error('Hãy mở tab SCORM tại scorm.eduone.io.vn rồi bấm Bắt đầu.');
     const run = {running: false, playbackOnly: true, needsPreparation: config.provider === 'builtin', session: token, origin: new URL(tab.url).origin,
       config: {...LessonCore.defaults, ...config, selectors: {...LessonCore.defaults.selectors, ...config.selectors}},
       message: 'Đã bật chạy nền. Đang chuẩn bị AI; câu hỏi sẽ được xử lý khi AI sẵn sàng.'};
-    await chrome.storage.session.set({[tabKey(id)]: run});
+    await (globalThis.SuiteStorage || chrome.storage).session.set({[tabKey(id)]: run});
     if (!current()) return null;
     await chrome.scripting.executeScript({target: {tabId: id, allFrames: true}, world: 'MAIN', files: ['playback.js']});
     if (!current()) return null;
-    await chrome.scripting.executeScript({target: {tabId: id, allFrames: true}, files: ['core.js', 'archive-content.js', 'content.js']});
+    await chrome.scripting.executeScript({target: {tabId: id, allFrames: true}, files: ['core.js', 'content.js']});
     if (!current()) return null;
     await chrome.tabs.sendMessage(id, {type: 'PREPARE_PLAYBACK', run});
     return current() ? {run, apiKey} : null;
@@ -148,21 +149,21 @@ async function launch(id, run) {
     if (!run.playbackOnly) {
       await chrome.scripting.executeScript({target: {tabId: id, allFrames: true}, world: 'MAIN', files: ['playback.js']});
       if (!await current()) return getRun(id);
-      await chrome.scripting.executeScript({target: {tabId: id, allFrames: true}, files: ['core.js', 'archive-content.js', 'content.js']});
+      await chrome.scripting.executeScript({target: {tabId: id, allFrames: true}, files: ['core.js', 'content.js']});
       if (!await current()) return getRun(id);
     }
-    const stored = await chrome.storage.session.get(null);
-    await chrome.storage.session.remove(Object.keys(stored).filter(x => x.startsWith(`status:${id}:`)));
+    const stored = await (globalThis.SuiteStorage || chrome.storage).session.get(null);
+    await (globalThis.SuiteStorage || chrome.storage).session.remove(Object.keys(stored).filter(x => x.startsWith(`status:${id}:`)));
     if (!await current()) return getRun(id);
     const active = {...run, running: true, playbackOnly: false, needsPreparation: false, message: 'Đang tìm slide trong các khung bài học…'};
-    await chrome.storage.session.set({[tabKey(id)]: active});
+    await (globalThis.SuiteStorage || chrome.storage).session.set({[tabKey(id)]: active});
     if (starting.get(id) !== token) { await stop(id); return getRun(id); }
     await broadcast(id, {type: 'START', run: active});
     return active;
   } finally { if (starting.get(id) === token) starting.delete(id); }
 }
 async function resumeBuiltinStarts() {
-  const all = await chrome.storage.session.get(null);
+  const all = await (globalThis.SuiteStorage || chrome.storage).session.get(null);
   for (const [key, run] of Object.entries(all)) {
     if (!key.startsWith('tab:') || !run.needsPreparation || run.config?.provider !== 'builtin') continue;
     const id = Number(key.slice(4));
@@ -182,9 +183,10 @@ async function solve(id, session, question, frameId) {
   // Provider is fixed for this run. Never fall back from local AI to a cloud API.
   if (run.config?.provider === 'builtin') return solveBuiltin(id, session, question, frameId);
   if (run.config?.provider && run.config.provider !== 'gemini') throw new Error('Nguồn AI không hợp lệ.');
-  const {apiKey, config = {}} = await chrome.storage.local.get(['apiKey', 'config']);
+  const {apiKey: legacyKey} = await (globalThis.SuiteStorage || chrome.storage).local.get(['apiKey']);
+  const apiKey = globalThis.SuiteSettings ? await SuiteSettings.keyForTab(id) : legacyKey;
   if (!apiKey) throw new Error('Chưa nhập Gemini API key trong popup.');
-  const model = config.model || LessonCore.defaults.model;
+  const model = run.config.model || LessonCore.defaults.model;
   if (!/^gemini-[a-zA-Z0-9.-]+$/.test(model)) throw new Error('Tên model không hợp lệ.');
   const controller = new AbortController();
   pending.set(key, controller);
@@ -232,11 +234,11 @@ async function handle(message, sender) {
       const key = `status:${id}:${sender.frameId}`;
       const playback = message.playback ? {active: message.playback.active === true,
         clock: String(message.playback.clock).slice(0, 30), problem: String(message.playback.problem || '').slice(0, 300)} : null;
-      await chrome.storage.session.set({[key]: {text: String(message.text).slice(0, 1500), at: Date.now(), frame: sender.frameId, playback}});
+      await (globalThis.SuiteStorage || chrome.storage).session.set({[key]: {text: String(message.text).slice(0, 1500), at: Date.now(), frame: sender.frameId, playback}});
       return {ok: true};
     }
-    if (message.type === 'COMPLETE') { await stop(id, 'Đã hoàn thành bài học và dừng tự động.'); return {ok: true}; }
-    if (message.type === 'PAUSE') { await stop(id, String(message.text).slice(0, 1500)); return {ok: true}; }
+    if (message.type === 'COMPLETE') { await stop(id, 'Đã hoàn thành bài học và dừng tự động.'); await globalThis.SuiteSettings?.clearKey(id); return {ok: true}; }
+    if (message.type === 'PAUSE') { await stop(id, String(message.text).slice(0, 1500)); await globalThis.SuiteSettings?.clearKey(id); return {ok: true}; }
     return {};
   }
   if (message.type === 'START') {
@@ -259,7 +261,7 @@ async function handle(message, sender) {
       throw error;
     }
   }
-  if (message.type === 'STOP') { await stop(id); return {ok: true}; }
+  if (message.type === 'STOP') { await stop(id); await globalThis.SuiteSettings?.clearKey(id); return {ok: true}; }
   if (message.type === 'BUILTIN_STATUS') return builtinStatus();
   if (message.type === 'ENSURE_BUILTIN' || message.type === 'OPEN_BUILTIN') {
     await openBuiltin();
@@ -267,13 +269,13 @@ async function handle(message, sender) {
     return {ok: true};
   }
   if (message.type === 'GET_STATUS') {
-    const all = await chrome.storage.session.get(null);
-    const {config = {}} = await chrome.storage.local.get('config');
+    const all = await (globalThis.SuiteStorage || chrome.storage).session.get(null);
+    const {config = {}} = await (globalThis.SuiteStorage || chrome.storage).local.get('config');
     return {run: all[tabKey(id)], provider: config.provider || 'gemini', builtin: builtinStatus(),
       frames: Object.entries(all).filter(([k]) => k.startsWith(`status:${id}:`)).map(([,v]) => v).sort((a,b) => b.at-a.at)};
   }
   if (message.type === 'DIAGNOSE') {
-    const results = await chrome.scripting.executeScript({target: {tabId: id, allFrames: true}, files: ['core.js', 'archive-content.js', 'content.js']});
+    const results = await chrome.scripting.executeScript({target: {tabId: id, allFrames: true}, files: ['core.js', 'content.js']});
     return Promise.all(results.map(async ({frameId}) => {
       try { return await chrome.tabs.sendMessage(id, {type: 'DIAGNOSE'}, {frameId}); }
       catch { return {frameId, error: 'Không truy cập được khung này.'}; }
@@ -288,11 +290,15 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
 });
 chrome.tabs.onRemoved.addListener(async id => {
   await stop(id);
-  const all = await chrome.storage.session.get(null);
-  await chrome.storage.session.remove(Object.keys(all).filter(k => k === tabKey(id) || k.startsWith(`status:${id}:`)));
+  await globalThis.SuiteSettings?.clearKey(id);
+  const all = await (globalThis.SuiteStorage || chrome.storage).session.get(null);
+  await (globalThis.SuiteStorage || chrome.storage).session.remove(Object.keys(all).filter(k => k === tabKey(id) || k.startsWith(`status:${id}:`)));
 });
 chrome.tabs.onUpdated.addListener(async (id, change) => {
   if (!change.url) return;
+  await globalThis.SuiteSettings?.navigate(id, change.url);
   const run = await getRun(id);
-  if ((run?.running || run?.playbackOnly || run?.needsPreparation) && new URL(change.url).origin !== run.origin) await stop(id, 'Đã rời trang bài học.');
+  if ((run?.running || run?.playbackOnly || run?.needsPreparation) && new URL(change.url).origin !== run.origin) {
+    await stop(id, 'Đã rời trang bài học.'); await globalThis.SuiteSettings?.clearKey(id);
+  }
 });

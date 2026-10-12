@@ -26,15 +26,12 @@
   </optgroup>
   <optgroup label="AI trên máy"><option value="chrome_ai">Chrome AI · Gemini Nano trên máy</option></optgroup>
 </select>
-<div id="keySection"><label for="apiKey">Gemini API key</label><input id="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="Nhập key — tự lưu khi rời ô" disabled></div>
+<div id="keySection"><label for="apiKey">Gemini API key</label><input id="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="Nhập key cho lần chạy này" disabled></div>
 <p id="aiStatus" class="subtle" role="status" aria-live="polite">Đang đọc cấu hình…</p>
 <div class="tabs" role="tablist" aria-label="Công cụ"><button id="tab-scorm" role="tab" aria-selected="true" aria-controls="panel-scorm" data-mode="scorm">SCORM</button><button id="tab-canvas" role="tab" aria-selected="false" aria-controls="panel-canvas" data-mode="canvas">Canvas</button></div>
 <section id="panel-scorm" role="tabpanel" aria-labelledby="tab-scorm"><div class="actions"><button id="start" class="primary" disabled>Bắt đầu</button><button id="stop" disabled>Dừng</button></div></section>
 <section id="panel-canvas" role="tabpanel" aria-labelledby="tab-canvas" hidden><div class="actions"><button id="canvas-auto" class="primary" disabled>Tự động làm</button><button id="canvas-target" class="primary" disabled>Làm đến 10 điểm</button></div><button id="canvas-stop" class="wide" disabled>Dừng</button></section>
 <div id="status" class="status" role="status" aria-live="polite">Sẵn sàng.</div>
-<button id="export-questions" class="wide" style="margin-top:12px;margin-bottom:0">Xuất câu hỏi Excel</button>
-<button id="clear-cache" class="wide" style="margin-top:8px;margin-bottom:0">Xoá Cache (Ngân hàng câu hỏi)</button>
-<p id="export-status" class="subtle" role="status" aria-live="polite" style="margin-bottom:0">Tự lưu câu hỏi · Gộp câu trùng · Tách theo bài tập</p>
-</main><footer>Tự lưu · Tự chọn đáp án · Tự chuyển tiếp</footer>
-<script src="core.js"></script><script src="builtin-engine.js"></script><script src="question-bank.js"></script><script src="xlsx-export.js"></script><script src="bank-export.js"></script><script src="suite.js"></script>
+</main><footer>Không lưu API key hoặc đáp án</footer>
+<script src="core.js"></script><script src="builtin-engine.js"></script><script src="suite.js"></script>
 </body></html>

@@ -1,19 +1,13 @@
 (function(chrome, importScripts, ChromeAi) {
 importScripts("chrome-ai.js");
-importScripts("quiz-learning.js");
 
 // All Gemini requests share a gate across tabs and the popup.
 const DEFAULT_MODEL = "gemini-3.8-flash";
 const MIN_REQUEST_INTERVAL_MS = 6000;
 let requestInFlight = false;
-const CACHE_STORAGE_KEY = "geminiAnswerCacheV2";
-const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const CACHE_MAX_ENTRIES = 500;
 // Keep these batch limits in sync with content.js.
 const MAX_BATCH_QUESTIONS = 10;
 const MAX_BATCH_CHARS = 24000;
-let cacheWrites = Promise.resolve();
-let cacheGeneration = 0;
 const chromeAiJobs = new Map();
 let autoStateWrites = Promise.resolve();
 
@@ -28,7 +22,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     GET_AUTO_STATE: handleGetAutoState,
     SET_AUTO_STATE: handleSetAutoState,
     RECORD_QUIZ_RESULTS: handleRecordQuizResults,
-    CLEAR_GRADED_ANSWERS: () => QuizLearning.clear(),
+    CLEAR_GRADED_ANSWERS: async () => ({ cleared: true }),
     TEST_API_KEY: handleTestApiKey
   };
   if (!Object.hasOwn(handlers, request.action)) return;
@@ -80,27 +74,12 @@ async function writeAutoState(data, sender) {
       expiresAt: Date.now() + 30 * 60 * 1000
     } });
   }
+  if (scope && data.enabled === false) await globalThis.SuiteSettings?.clearKey(sender.tab.id);
   return { enabled: Boolean(scope && data.enabled === true) };
 }
 
-async function handleRecordQuizResults(data, sender) {
-  const scope = autoStateScope(sender);
-  if (!scope || !Array.isArray(data.observations) || data.observations.length > 500) throw apiError("Không xác định được bài để lưu kết quả.", "INVALID_INPUT");
-  validateQuestions(data.observations.map(item => item.question));
-  return QuizLearning.record(scope.scope, data.observations);
-}
-
-async function learnQuestion(question, sender) {
-  const scope = autoStateScope(sender);
-  if (!scope) return null;
-  const learned = await QuizLearning.lookup(scope.scope, question);
-  question.excluded_answers = learned.excluded || [];
-  if (!learned.answer && question.questionType !== "multiple_answers_question" &&
-      question.options.every((_, i) => question.excluded_answers.some(set => set.length === 1 && set[0] === i))) {
-    throw apiError("Canvas đã chấm sai tất cả lựa chọn của câu này. Đã dừng để kiểm tra dữ liệu.", "NO_ANSWER");
-  }
-  return learned.answer;
-}
+// Legacy messages are acknowledged without retaining grading evidence.
+async function handleRecordQuizResults() { return {count: 0}; }
 
 function chromeAiJobKey(data, sender) {
   return JSON.stringify([sender.tab?.id, sender.documentId || sender.frameId, data.requestId]);
@@ -114,8 +93,6 @@ async function handleCancelChromeAi(data, sender) {
 async function handleChromeAiQuestion(data, sender) {
   const question = { id: "local", ...data.question };
   validateQuestions([question]);
-  const learned = await learnQuestion(question, sender);
-  if (learned) return learned;
   if (typeof data.requestId !== "string" || !data.requestId) throw apiError("Thiếu mã yêu cầu Chrome AI.", "INVALID_INPUT");
   const key = chromeAiJobKey(data, sender);
   if (chromeAiJobs.has(key)) throw apiError("Chrome AI đang xử lý yêu cầu này.", "CHROME_AI_BUSY");
@@ -332,76 +309,8 @@ function answerFields(answer) {
   };
 }
 
-async function questionCacheKey(question, model) {
-  // Exact text and option order matter. Do not persist prompts or API keys in the cache.
-  const identity = JSON.stringify([
-    "batch-prompt-v2-reviewed", model || DEFAULT_MODEL, question.questionType || "multiple_choice_question",
-    question.questionText, question.options, question.excluded_answers || []
-  ]);
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(identity));
-  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
-}
-
-async function readAnswerCache() {
-  try {
-    const stored = await chrome.storage.local.get(CACHE_STORAGE_KEY);
-    const cache = stored[CACHE_STORAGE_KEY];
-    return cache && typeof cache === "object" && !Array.isArray(cache) ? cache : {};
-  } catch (_) {
-    // A cache storage failure must not discard a usable AI answer.
-    return {};
-  }
-}
-
-function serializeCacheWrite(operation) {
-  const result = cacheWrites.then(operation);
-  cacheWrites = result.catch(() => {});
-  return result;
-}
-
-async function saveAnswers(entries, generation) {
-  try {
-    await serializeCacheWrite(async () => {
-      if (generation !== cacheGeneration) return; // Respect clearing during an in-flight request.
-      const cache = await readAnswerCache();
-      if (generation !== cacheGeneration) return;
-      Object.assign(cache, entries);
-      const live = Object.entries(cache)
-        .filter(([, entry]) => Number.isFinite(entry?.expiresAt) && entry.expiresAt > Date.now())
-        .reverse()
-        .sort((a, b) => b[1].expiresAt - a[1].expiresAt)
-        .slice(0, CACHE_MAX_ENTRIES);
-      await chrome.storage.local.set({ [CACHE_STORAGE_KEY]: Object.fromEntries(live) });
-    });
-  } catch (_) {
-    console.warn("Không lưu được cache đáp án; vẫn trả về kết quả Gemini.");
-  }
-}
-
-async function handleClearAnswerCache() {
-  cacheGeneration++;
-  await serializeCacheWrite(() => chrome.storage.local.remove([CACHE_STORAGE_KEY, "geminiAnswerCacheV1"]));
-  return { cleared: true };
-}
-
-async function lookupAnswers(data, sender = {}) {
-  validateQuestions(data.questions);
-  const verified = await Promise.all(data.questions.map(q => learnQuestion(q, sender)));
-  const keys = await Promise.all(data.questions.map(q => questionCacheKey(q, data.model)));
-  const cache = await readAnswerCache();
-  const answers = data.questions.map((q, index) => {
-    if (verified[index]) return verified[index];
-    const entry = cache[keys[index]];
-    return Number.isFinite(entry?.expiresAt) && entry.expiresAt > Date.now() && validAnswer(entry, q)
-      ? { ...answerFields(entry), id: q.id, source: data.model || DEFAULT_MODEL, cached: true } : null;
-  });
-  return { keys, answers };
-}
-
-async function handleGetCachedAnswers(data, sender) {
-  const { answers } = await lookupAnswers(data, sender);
-  return { answers: answers.filter(Boolean) };
-}
+async function handleClearAnswerCache() { return {cleared: true}; }
+async function handleGetCachedAnswers() { return {answers: []}; }
 
 function parseGeneratedJson(json) {
   if (json?.candidates?.[0]?.finishReason === "MAX_TOKENS") {
@@ -455,21 +364,15 @@ function batchAnswers(parsed, questions) {
   if (!Array.isArray(answers) && questions.length === 1 && parsed?.id === questions[0].id) answers = [parsed];
   if (!Array.isArray(answers) || answers.length !== questions.length) {
     const received = Array.isArray(answers) ? answers.length : 0;
-    throw apiError(`AI trả về ${received}/${questions.length} đáp án theo định dạng yêu cầu. Chưa lưu cache nhóm này.`, "INVALID_RESPONSE");
+    throw apiError(`AI trả về ${received}/${questions.length} đáp án theo định dạng yêu cầu.`, "INVALID_RESPONSE");
   }
   return answers;
 }
 
 async function handleSolveQuestions(data, sender) {
-  const generation = cacheGeneration;
-  const { keys, answers } = await lookupAnswers(data, sender);
-  // Duplicate questions in a batch need just one generated answer.
-  const missing = new Map();
-  data.questions.forEach((q, index) => {
-    if (!answers[index] && !missing.has(keys[index])) missing.set(keys[index], q);
-  });
-  if (!missing.size) return { answers, cachedCount: answers.length };
-  const questions = [...missing.values()];
+  if (globalThis.SuiteSettings) data = {...data, apiKey: await SuiteSettings.keyForTab(sender.tab?.id)};
+  validateQuestions(data.questions);
+  const questions = data.questions;
   if (questions.length > MAX_BATCH_QUESTIONS ||
       (questions.length > 1 && JSON.stringify(questions).length > MAX_BATCH_CHARS)) {
     throw apiError("Nhóm câu hỏi quá lớn. Hãy chia thành nhóm nhỏ hơn.", "INVALID_INPUT");
@@ -486,7 +389,6 @@ answer_texts: mảng nguyên văn đáp án đã chọn, cùng thứ tự với 
 explanation: giải thích ngắn 1–2 câu dựa trên kiến thức liên quan, không cần trình bày từng bước suy luận.
 Nếu không xác định được, để hai mảng rỗng và giải thích ngắn lý do.
 Phải trả lời đầy đủ mọi id, mỗi id đúng một lần, không thêm id khác.
-Không chọn lại toàn bộ tổ hợp chỉ số trong excluded_answers: Canvas đã chấm tổ hợp đó chưa đạt trọn điểm.
 Dữ liệu câu hỏi:
 ${JSON.stringify(questions)}`;
   const json = await generateContent(data, {
@@ -502,20 +404,14 @@ ${JSON.stringify(questions)}`;
   for (const answer of batchAnswers(parsed, questions)) {
     const question = expected.get(answer?.id);
     if (!question || generated.has(answer.id)) {
-      throw apiError("AI trả về mã câu hỏi hoặc chỉ số đáp án không hợp lệ. Chưa lưu cache nhóm này.", "INVALID_RESPONSE");
+      throw apiError("AI trả về mã câu hỏi hoặc chỉ số đáp án không hợp lệ.", "INVALID_RESPONSE");
     }
     validateAnswer(answer, question);
     generated.set(answer.id, answerFields(answer));
   }
-  const entries = Object.fromEntries([...missing].map(([key, q]) => [key, {
-    ...generated.get(q.id), expiresAt: Date.now() + CACHE_TTL_MS
-  }]));
-  await saveAnswers(entries, generation);
   return {
-    answers: data.questions.map((q, index) => answers[index] || {
-      ...answerFields(entries[keys[index]]), id: q.id, source: data.model || DEFAULT_MODEL, cached: false
-    }),
-    cachedCount: answers.filter(Boolean).length
+    answers: questions.map(q => ({...generated.get(q.id), id: q.id, source: data.model || DEFAULT_MODEL, cached: false})),
+    cachedCount: 0
   };
 }
 

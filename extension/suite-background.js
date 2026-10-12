@@ -1,29 +1,31 @@
 // One worker, two independent modules. Canvas uses action; SCORM uses type.
-importScripts('question-bank.js','shared-settings.js','background.js', 'canvas-compat.js', 'canvas/chrome-ai.js', 'canvas/quiz-learning.js');
+importScripts('runtime-storage.js','shared-settings.js','background.js','canvas-compat.js','canvas/chrome-ai.js');
 const SuiteCanvasAI = {solve: requestCanvasAI};
 importScripts('canvas/background.js');
 
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
-  if (message.action === 'BANK_WARNING') {
-    if (sender.id && sender.id !== chrome.runtime.id) return;
-    if (!sender.tab || !/\/quizzes\//.test(new URL(sender.url || 'about:blank').pathname)) return;
-    QuestionBank.failure(Error(String(message.data?.message || 'Không đọc được lịch sử.').slice(0,500))).then(()=>reply({success:true}));
-    return true;
+  if(message.action==='SUITE_HEARTBEAT') {
+    if(sender.id && sender.id!==chrome.runtime.id)return;
+    if(!sender.tab)return;
+    reply({success:true});return true;
   }
-  if (message.action === 'BANK_RECORD' || message.action === 'BANK_EXPORT') {
-    if (sender.id && sender.id !== chrome.runtime.id) return;
-    const trusted = sender.url?.startsWith(chrome.runtime.getURL(''));
-    if (message.action === 'BANK_EXPORT' && !trusted) { reply({success:false,error:'Chỉ xuất kho câu hỏi từ popup.'}); return true; }
-    const task = message.action === 'BANK_EXPORT' ? QuestionBank.list() : QuestionBank.record(sender, message.data || {});
-    task.then(data => reply({success:true,data}), async error => {
-      await QuestionBank.failure(error); reply({success:false,error:error.message});
-    });
-    return true;
+  if (['BANK_WARNING','BANK_RECORD','BANK_EXPORT'].includes(message.action)) {
+    reply({success:false,error:'Tiện ích không lưu câu hỏi hoặc đáp án.'}); return true;
+  }
+  if(message.action==='SUITE_CLEAR_KEY') {
+    if(sender.id && sender.id!==chrome.runtime.id)return;
+    const trusted=sender.url?.startsWith(chrome.runtime.getURL(''));
+    if(!trusted && !sender.tab)return;
+    SuiteSettings.clearKey(trusted ? message.data?.tabId : sender.tab.id).then(()=>reply({success:true}),error=>reply({success:false,error:error.message}));return true;
   }
   if(message.action==='SUITE_SETTINGS') {
     if(sender.id && sender.id!==chrome.runtime.id)return;
     if(!sender.url?.startsWith(chrome.runtime.getURL('')))return;
-    const task=message.data ? SuiteSettings.save(message.data) : SuiteSettings.ensure();
+    const task=message.data ? (async()=>{
+      const patch={...message.data};
+      if(typeof patch.apiKey==='string')patch.sourceUrl=(await chrome.tabs.get(patch.tabId)).url;
+      return SuiteSettings.save(patch);
+    })() : SuiteSettings.ensure(message.tabId);
     task.then(data=>reply({success:true,data}),error=>reply({success:false,error:error.message}));return true;
   }
   if(message.action !== 'CANVAS_STORAGE')return;
@@ -39,7 +41,9 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
       for(const key of ['apiKey','aiModel','aiEngine'])if(Object.hasOwn(value,key))throw new Error('Đổi AI tại popup chung.');
       value.autoClickAnswer=true;value.autoNextQuestion=true;value.answerReviewVersion=2;
     }
-    return CanvasCompat.create(false).storage.local[method](value);
+    const result=await CanvasCompat.create(false).storage.local[method](value);
+    if(method==='get' && keys.includes('apiKey'))result.apiKey=await SuiteSettings.keyForTab(sender.tab.id);
+    return result;
   })().then(data=>reply({success:true,data}),error=>reply({success:false,error:error.message}));
   return true;
 });

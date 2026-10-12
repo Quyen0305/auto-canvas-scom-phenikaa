@@ -6,17 +6,6 @@ globalThis.CanvasCompat = (() => {
     let callbackError;
     const runtime = new Proxy(native.runtime, {get(target,key) {
       if (key === 'lastError') return callbackError || target.lastError;
-      if (key === 'sendMessage' && content && globalThis.SuiteCapture) return (message, ...args) => {
-        const enriched = message.action ? {...message, data:{...message.data, archiveContext:SuiteCapture.context()}} : message;
-        return target.sendMessage(enriched, ...args);
-      };
-      if (key === 'onMessage' && !content && globalThis.QuestionBank) return {
-        addListener(listener) {
-          target.onMessage.addListener((message, sender, reply) => listener(message, sender, response => {
-            QuestionBank.captureCanvas(message, sender, response).catch(QuestionBank.failure).finally(() => reply(response));
-          }));
-        }
-      };
       const value = target[key]; return typeof value === 'function' ? value.bind(target) : value;
     }});
     function complete(promise, callback) {
@@ -33,7 +22,7 @@ globalThis.CanvasCompat = (() => {
           if (!response?.success) throw new Error(response?.error || 'Không đọc được cài đặt Canvas.');
           return response.data;
         }
-        const store = native.storage[name];
+        const store = globalThis.SuiteStorage?.[name] || native.storage[name];
         if (method === 'get') {
           const keys = value == null ? null : typeof value === 'string' ? [value] : Array.isArray(value) ? value : Object.keys(value);
           const result = await store.get(keys?.map(key=>prefix+key) ?? null);
@@ -52,7 +41,7 @@ globalThis.CanvasCompat = (() => {
       if (!['executeScript','insertCSS'].includes(key)) return typeof value==='function'?value.bind(target):value;
       return (options,...args)=>{
         const files=options.files?.map(file=>'canvas/'+file);
-        if (key==='executeScript' && files?.includes('canvas/content.js')) { files.unshift('archive-content.js','canvas-compat.js');files.push('canvas-controls.js'); }
+        if (key==='executeScript' && files?.includes('canvas/content.js')) { files.unshift('canvas-compat.js');files.push('canvas-controls.js'); }
         if (key==='insertCSS' && files?.includes('canvas/styles.css')) files.push('canvas-compact.css');
         return value.call(target,files?{...options,files}:options,...args);
       };
@@ -63,7 +52,7 @@ globalThis.CanvasCompat = (() => {
         // Full settings opens in its own tab. Reconnect should still target the
         // lesson tab from the popup, not inject into the settings document.
         if(!content && globalThis.document && globalThis.parent?.document?.body?.classList.contains('suite-options')) {
-          const stored=await native.storage.session.get('suite:sourceTab');
+          const stored=await (globalThis.SuiteStorage || native.storage).session.get('suite:sourceTab');
           const source=stored['suite:sourceTab'];
           if(Number.isInteger(source?.id) && Date.now()-source.at<10*60*1000) return [await native.tabs.get(source.id)];
         }

@@ -11,6 +11,7 @@ async function setup({canvas=false,engine='gemini_api',prepare=async()=>{}}={}){
     return {ok:true,message:'Đang bắt đầu.'};
   }},tabs:{query:async()=>[{id:7,url:canvas?'https://canvas.example/courses/1/quizzes/2/take':'https://scorm.eduone.io.vn/en/learn/demo'}],sendMessage:async(id,message)=>{commands.push(message.command);return {text:'Sẵn sàng.'};}}};
   w.eval(fs.readFileSync('extension/suite.js','utf8'));await flush();
+  if(engine!=='chrome_ai')w.document.getElementById('apiKey').value='TEST_RAM_KEY';
   return {w,ai,messages,commands,el:id=>w.document.getElementById(id),get preparations(){return preparations;},close(){w.dispatchEvent(new w.Event('pagehide'));w.close();}};
 }
 test('one model selector with no settings page, duplicate panels, checkboxes or extra setup buttons',async()=>{
@@ -20,12 +21,19 @@ test('one model selector with no settings page, duplicate panels, checkboxes or 
   h.el('tab-canvas').click();assert.equal(h.el('panel-canvas').hidden,false);
   assert.equal(h.el('aiModel').value,'gemini-2.5-flash');h.close();
 });
-test('model and API key save automatically for both modules without showing stored key',async()=>{
-  const h=await setup();assert.equal(h.el('apiKey').value,'');assert.match(h.el('apiKey').placeholder,/Đã lưu/);
-  h.el('aiModel').value='gemini-3.7-flash';h.el('aiModel').dispatchEvent(new h.w.Event('change'));await flush();
-  assert.equal(h.ai.model,'gemini-3.7-flash');
+test('API key remains in the input until Start and is never saved on blur',async()=>{
+  const h=await setup();assert.match(h.el('apiKey').placeholder,/lần chạy/);
   h.el('apiKey').value='test-only';h.el('apiKey').dispatchEvent(new h.w.Event('change'));await flush();
-  assert.equal(h.ai.apiKey,'test-only');assert.equal(h.el('apiKey').value,'');h.close();
+  assert.equal(h.ai.apiKey,undefined);assert.equal(h.el('apiKey').value,'test-only');
+  h.el('start').click();await flush();assert.equal(h.ai.apiKey,'test-only');assert.equal(h.el('apiKey').value,'');h.close();
+});
+test('blank key prevents starting even when an earlier run had a RAM key',async()=>{
+  const h=await setup();h.el('apiKey').value='';h.el('start').click();await flush();
+  assert.equal(h.messages.some(m=>m.type==='START'),false);assert.match(h.el('status').textContent,/Nhập API key/);h.close();
+});
+test('popup has no archive/export controls and clears the input on close',async()=>{
+  const h=await setup();assert.equal(h.el('export-questions'),null);assert.equal(h.el('clear-cache'),null);
+  h.w.dispatchEvent(new h.w.Event('pagehide'));assert.equal(h.el('apiKey').value,'');h.close();
 });
 test('selecting Chrome AI starts native setup in the selection gesture with no extra button',async()=>{
   const h=await setup();h.el('aiModel').value='chrome_ai';h.el('aiModel').dispatchEvent(new h.w.Event('change'));
@@ -35,7 +43,7 @@ test('selecting Chrome AI starts native setup in the selection gesture with no e
 test('Canvas auto and target controls save shared config and dispatch existing modes',async()=>{
   const h=await setup({canvas:true});assert.equal(h.el('panel-canvas').hidden,false);
   h.el('canvas-auto').click();await flush();assert.ok(h.commands.includes('auto'));
-  h.el('canvas-target').click();await flush();assert.ok(h.commands.includes('target'));
+  h.el('apiKey').value='TEST_RAM_KEY_2';h.el('canvas-target').click();await flush();assert.ok(h.commands.includes('target'));
   h.el('canvas-stop').click();await flush();assert.ok(h.commands.includes('stop'));h.close();
 });
 test('Stop while preparing AI prevents a late Canvas automatic start',async()=>{
@@ -65,46 +73,4 @@ test('Stop before SCORM playback setup completes prevents a late popup AI downlo
   h.el('start').click();await flush();h.el('stop').click();await flush();
   release({playbackOnly:true,needsPreparation:true});await flush();
   assert.equal(h.preparations,0);assert.ok(h.messages.some(m=>m.type==='STOP'));h.close();
-});
-
-test('one export button flushes open Canvas pages and downloads the grouped archive without starting a solver',async()=>{
-  const h=await setup({canvas:true}),injected=[],downloads=[];
-  h.w.chrome.scripting={executeScript:async args=>injected.push(args)};
-  const originalSend=h.w.chrome.runtime.sendMessage;
-  h.w.chrome.runtime.sendMessage=async m=>{assert.notEqual(m.action,'BANK_EXPORT');return originalSend(m);};
-  h.w.QuestionBank={list:async()=>({entries:[{test:true}],warning:''})};
-  h.w.chrome.tabs.sendMessage=async(id,m)=>{h.commands.push(m.action);return {success:true};};
-  h.w.BankExport={build:entries=>{assert.equal(entries.length,1);return {bytes:new Uint8Array([80,75]),questions:2,groups:1,verified:1};}};
-  h.w.URL.createObjectURL=()=> 'blob:test';h.w.URL.revokeObjectURL=()=>{};
-  h.w.HTMLAnchorElement.prototype.click=function(){downloads.push(this.download);};
-  h.el('export-questions').click();await flush();await flush();
-  assert.ok(h.commands.includes('BANK_FLUSH'));assert.equal(injected[0].files[0],'archive-content.js');
-  assert.equal(downloads.length,1);assert.match(downloads[0],/\.zip$/);assert.match(h.el('export-status').textContent,/2 câu đã chấm đúng \/ 1 bài tập/);
-  assert.equal(h.messages.some(m=>m.type==='START'),false);h.close();
-});
-
-test('export reads real local archive when an older background would return no BANK_EXPORT response',async()=>{
-  const h=await setup(),downloads=[];
-  const entry={courseId:'course-1',courseTitle:'Môn học',scope:'quiz-1',exerciseTitle:'Ôn tập',firstSeen:1,
-    question:{text:'1 + 1?',options:['Một','Hai'],multiple:false},events:[{kind:'graded',correct:true,answers:['Hai'],at:1}]};
-  h.w.chrome.storage={local:{get:async()=>({'suite:question:test':entry,apiKey:'PRIVATE_API_KEY','canvas:apiKey':'PRIVATE_API_KEY'})}};
-  const send=h.w.chrome.runtime.sendMessage;
-  h.w.chrome.runtime.sendMessage=async m=>m.action==='BANK_EXPORT'?undefined:send(m);
-  h.w.TextEncoder=TextEncoder;
-  for(const name of ['question-bank.js','xlsx-export.js','bank-export.js'])h.w.eval(fs.readFileSync('extension/'+name,'utf8'));
-  h.w.URL.createObjectURL=()=> 'blob:test';h.w.URL.revokeObjectURL=()=>{};
-  h.w.HTMLAnchorElement.prototype.click=function(){downloads.push(this.download);};
-  h.el('export-questions').click();await flush();await flush();
-  assert.equal(downloads.length,1);assert.match(h.el('export-status').textContent,/Đã xuất 1 câu đã chấm đúng/);
-  assert.ok(!h.el('export-status').textContent.includes('PRIVATE'));h.close();
-});
-
-test('an empty archive plus a stale Canvas collector explains reload instead of reporting a generic read error',async()=>{
-  const h=await setup({canvas:true});
-  h.w.chrome.scripting={executeScript:async()=>{}};
-  h.w.chrome.tabs.sendMessage=async()=>undefined;
-  h.w.QuestionBank={list:async()=>({entries:[],warning:''})};
-  h.el('export-questions').click();await flush();await flush();
-  assert.match(h.el('export-status').textContent,/Tải lại tiện ích tại chrome:\/\/extensions, F5/);
-  assert.equal(h.el('export-questions').disabled,false);h.close();
 });

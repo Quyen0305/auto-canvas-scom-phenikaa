@@ -41,27 +41,33 @@ test('does not skip incomplete video, clicks once after full timeline',async()=>
   await h.step();assert.equal(clicks,1);await h.step();assert.equal(clicks,1);h.close();
 });
 
-test('SCORM persists the submitted question and confirmed grade before Continue removes the result',async()=>{
+test('unchanged SCORM status still sends a heartbeat to retain the volatile worker run',async()=>{
+  const h=await setup('<div>Chưa có slide</div>');
+  await h.step();const before=h.messages.filter(m=>m.type==='STATUS').length;
+  await h.step(16000);
+  assert.equal(h.messages.filter(m=>m.type==='STATUS').length,before+1);h.close();
+});
+
+test('SCORM submits and continues without retaining the question or grade',async()=>{
   const records=[];
   const h=await setup(`<div class="slide">${quiz()}</div>`,undefined,{},async(ctx,items)=>records.push({ctx,items:JSON.parse(JSON.stringify(items))}));
   let submitted=0,continued=0;
   h.doc.querySelector('#submit').onclick=()=>{
-    submitted++;assert.equal(records.at(-1).items[0].kind,'submitted');
+    submitted++;assert.equal(records.length,0);
     h.doc.querySelector('.slide').innerHTML='<p>Chúc mừng, em đã trả lời đúng!</p><button id="continue">Tiếp tục học</button>';
-    h.doc.querySelector('#continue').onclick=()=>{continued++;assert.equal(records.at(-1).items[0].correct,true);};
+    h.doc.querySelector('#continue').onclick=()=>{continued++;assert.equal(records.length,0);};
   };
   await h.step();await h.step();await h.step();await h.step();
   assert.equal(submitted,1);assert.equal(continued,1);
-  assert.deepEqual(records.map(r=>r.items[0].kind),['seen','ai','submitted','graded']);
-  assert.equal(records.at(-1).items[0].question.options[1],'Hai');assert.equal(records.at(-1).ctx.attempt,'test');h.close();
+  assert.equal(records.length,0);h.close();
 });
 
-test('SCORM archives incorrect feedback before Học lại, without calling it a correct answer',async()=>{
+test('SCORM handles incorrect feedback without sending archive records',async()=>{
   const records=[];
   const h=await setup(`<div class="slide">${quiz()}</div>`,undefined,{},async(ctx,items)=>records.push(JSON.parse(JSON.stringify(items[0]))));
   h.doc.querySelector('#submit').onclick=()=>{h.doc.querySelector('.slide').innerHTML='<p>Rất tiếc, em đã trả lời sai.</p><button id="retry">Học lại</button>';};
   await h.step();await h.step();await h.step();
-  const grade=records.find(r=>r.kind==='graded');assert.ok(grade);assert.equal(grade.correct,false);assert.deepEqual(grade.selected_indices,[1]);h.close();
+  assert.equal(records.length,0);h.close();
 });
 test('waits until Next becomes visible and enabled',async()=>{
   const h=await setup(`<div class="slide">Video</div>${bar()}<button id="next" hidden disabled>Tiếp theo</button>`);

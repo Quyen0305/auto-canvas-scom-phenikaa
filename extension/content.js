@@ -32,14 +32,6 @@
       throw error;
     }
   }
-  async function archive(quiz, kind, feedbackText = '', correct = null) {
-    if (!quiz?.archiveQuestion || !globalThis.SuiteCapture) return;
-    try {
-      await SuiteCapture.record(quiz.archiveContext, [{question: quiz.archiveQuestion,
-        kind, selected_indices: quiz.answers, correct, reason: feedbackText || quiz.reason,
-        eventId: quiz.archiveAttempt || ''}]);
-    } catch (error) { console.warn('Không lưu được câu hỏi SCORM:', error.message); }
-  }
   const query = (selector, root = document) => selector ? [...root.querySelectorAll(selector)] : [];
   function visible(el) {
     if (!el?.isConnected || el.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
@@ -283,9 +275,11 @@
     return {text: questionText, options, choices, multiple, key: C.questionKey(questionText, options, multiple)};
   }
   const selected = el => el.matches('input') ? !!el.checked : el.getAttribute('aria-checked') === 'true' || el.getAttribute('aria-selected') === 'true';
+  let lastStatusAt = 0;
   function setStatus(value) {
     const playbackStatus = JSON.stringify(playbackState);
-    if (value === S.lastStatus && playbackStatus === lastPlaybackStatus) return;
+    if (value === S.lastStatus && playbackStatus === lastPlaybackStatus && Date.now() - lastStatusAt < 15000) return;
+    lastStatusAt = Date.now();
     lastPlaybackStatus = playbackStatus;
     S.lastStatus = value;
     sendMessage({type: 'STATUS', session: S.session, text: value, playback: playbackState}).catch(() => {});
@@ -350,12 +344,6 @@
       }
       const wrong = feedback('incorrect');
       const correct = wrong ? '' : feedback('correct');
-      if (['submitted', 'result'].includes(S.quiz?.phase) && (wrong || correct) && !S.quiz.archivedGrade) {
-        const gradedQuiz = S.quiz;
-        await archive(gradedQuiz, 'graded', wrong || correct, !!correct);
-        gradedQuiz.archivedGrade = true;
-        if (!S.running || generation !== S.generation) return;
-      }
       if (S.action?.kind === 'retry') {
         const action = S.action;
         if (wrong && snap.root === action.root && (visible(action.button) || snap.signature === action.signature)) {
@@ -462,10 +450,7 @@
           const historyKey = JSON.stringify([currentSlide()?.ref || '', C.historyKey(snap.q.text, snap.q.options, snap.q.multiple)]);
           const history = C.remapHistory(S.histories.get(historyKey) || [], snap.q.options);
           S.quiz = {key: snap.q.key, historyKey, count: snap.q.options.length, multiple: snap.q.multiple, history, phase: 'ready', review: currentReview(), videoTarget: retryVideoTarget()};
-          S.quiz.archiveQuestion = {text: snap.q.text, options: [...snap.q.options], multiple: snap.q.multiple};
-          S.quiz.archiveContext = globalThis.SuiteCapture?.context('SCORM');
-          if (S.quiz.archiveContext) S.quiz.archiveContext.attempt = S.session;
-          await archive(S.quiz, 'seen');
+          S.quiz.question = {text: snap.q.text, options: [...snap.q.options], multiple: snap.q.multiple};
           if (!S.running || generation !== S.generation) return;
         }
         const quiz = S.quiz;
@@ -503,7 +488,6 @@
             if ((fresh.q.multiple && selected(el) !== want) || (!fresh.q.multiple && want && !selected(el))) click(el);
           });
           quiz.answers = chosen; quiz.reason = response.reason; quiz.phase = 'selected'; quiz.at = Date.now();
-          await archive(quiz, 'ai');
           setStatus(`${remaining !== null ? 'Tự chọn đáp án còn lại' : C.providerName(S.config) + ' chọn'} ${chosen.map(x => x + 1).join(', ')}. ${response.reason || ''}`); return;
         }
         if (quiz.phase === 'selected') {
@@ -511,12 +495,9 @@
           if (!snap.q.choices.every((el, i) => selected(el) === quiz.answers.includes(i))) throw new Error('Chưa xác nhận được trạng thái chọn đáp án; chưa bấm Gửi.');
           const submit = button('submit');
           if (!submit) return;
-          quiz.archiveAttempt = globalThis.crypto?.randomUUID?.() || String(now);
-          quiz.archivedGrade = false;
-          await archive(quiz, 'submitted');
           if (!S.running || generation !== S.generation || !submit.isConnected) return;
           quiz.phase = 'submitted'; quiz.at = now;
-          quiz.history.push({answers: quiz.answers.map(x => x + 1), answerTexts: quiz.answers.map(x => C.answerIdentity(quiz.archiveQuestion.options[x])), feedback: ''});
+          quiz.history.push({answers: quiz.answers.map(x => x + 1), answerTexts: quiz.answers.map(x => C.answerIdentity(quiz.question.options[x])), feedback: ''});
           S.histories.set(quiz.historyKey, quiz.history);
           click(submit); setStatus('Đã gửi đáp án; đợi kết quả.'); return;
         }
