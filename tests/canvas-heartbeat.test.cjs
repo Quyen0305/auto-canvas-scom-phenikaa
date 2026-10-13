@@ -26,6 +26,8 @@ test('Canvas keeps the RAM worker alive during a long API backoff and releases i
     const heartbeat=[...intervals.values()].find(timer=>timer.ms===15000);
     assert.ok(heartbeat,'a long 429 wait must retain the RAM worker');
     heartbeat.fn();await flush();assert.ok(messages.some(m=>m.action==='SUITE_HEARTBEAT'));
+    assert.match(w.document.getElementById('canvas-ai-status-msg').textContent,/Quota wait/);
+    assert.match(w.document.getElementById('canvas-ai-status-msg').textContent,/2\/5/);
     w.__canvasAiCleanup();await flush();assert.equal(intervals.size,0);
   } finally {w.__canvasAiCleanup?.();w.close();}
 });

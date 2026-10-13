@@ -1,6 +1,6 @@
 # Auto Canvas SCOM Phenikaa
 
-Tiện ích Chrome hỗ trợ làm bài trắc nghiệm trên Canvas, xem video bài giảng và làm bài tập theo dõi bài học SCORM. Phiên bản hiện tại: **2.3.1**.
+Tiện ích Chrome hỗ trợ làm bài trắc nghiệm trên Canvas, xem video bài giảng và làm bài tập theo dõi bài học SCORM. Phiên bản hiện tại: **2.3.2**.
 
 Tên repository giữ chữ `scom`; tên kỹ thuật của định dạng bài học là **SCORM**. Khi cài vào Chrome, tiện ích hiển thị tên **Trợ lý học tập · Canvas & SCORM**.
 
@@ -132,6 +132,18 @@ Khi nâng cấp, tiện ích thử xóa key cũ và kho đáp án đã lưu. N�
 4. F5 các trang học đang mở, rồi mở popup và chạy lại.
 
 Sau khi tải lại tiện ích, bộ nhớ phiên bị Chrome xóa, cấu hình được đặt về mặc định và key phải nhập lại. Mã nguồn trên branch `feature/ai-canvas-enhancements` là bản này; khi tải ZIP, chọn đúng branch trước.
+
+### Lỗi Gemini và thử lại (2.3.2)
+
+Trạng thái Canvas hiển thị model, nguyên nhân từ API, thời gian còn lại và lượt thử tiếp theo. Dòng chờ 1 giây có thể chỉ là giây cuối của bộ đếm; mỗi lần gửi lại đều phải tuân theo thời gian giãn cách, không gọi API mỗi giây.
+
+- Lỗi tần suất **429**: giữ thời gian chờ của bản trước và tôn trọng chỉ dẫn từ Google, không thêm thời gian chờ nhân tạo. Nếu Google không gửi chỉ dẫn, giữ cơ chế dự phòng 5, 10, 20, 40 giây cộng đệm 1 giây vốn có.
+- Hết quota ngày hoặc quota model bằng 0: dừng ngay và yêu cầu kiểm tra hạn mức trong Google AI Studio, không lặp thử lại.
+- Lỗi tạm thời **408/500/502/503/504**, mạng hoặc timeout: giữ chính sách chờ hiện có rồi thử lại, tôn trọng Retry-After khi Google yêu cầu. Không tự gửi sớm hơn thời điểm Google cho phép.
+- Lỗi key, quyền, tín dụng, cấu hình hoặc model **400/401/402/403/404**: dừng với hướng dẫn cụ thể. Không tự chuyển model.
+- Tối đa 5 lần thử cho một nhóm; nút Dừng vẫn hủy thời gian chờ. Dừng vì lỗi không xóa key tạm của phiên Chrome.
+
+Tiện ích có thể xử lý lỗi và thời gian chờ, nhưng không tăng được quota tài khoản hoặc khắc phục sự cố dịch vụ của Google.
 
 ## 6. Xử lý lỗi thường gặp
 

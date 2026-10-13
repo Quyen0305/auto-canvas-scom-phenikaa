@@ -317,11 +317,6 @@
         }
         return { answers };
       }
-      // Preserve fallback for a missing model, but never switch models to evade 429.
-      if (response.code === "HTTP_404" && config.aiModel !== "gemini-3.8-flash") {
-        config.aiModel = "gemini-3.8-flash";
-        continue;
-      }
       if (response.code !== "COOLDOWN") failures++;
       if (!response.retryable || failures >= 5) {
         throw new Error(response.error + (failures >= 5 ? " Đã thử tối đa 5 lần; tự động đã dừng." : ""));
@@ -331,8 +326,9 @@
       while (Date.now() < waitUntil) {
         throwIfCancelled(signal);
         const seconds = Math.ceil((waitUntil - Date.now()) / 1000);
-        const label = response.code === "COOLDOWN" ? "Đang chờ lượt gọi Gemini" : "Gemini tạm giới hạn hoặc gặp lỗi";
-        updateStatus(label + ": chờ " + seconds + "s để thử lại...", "running");
+        const reason = response.error || 'Gemini chưa xử lý được yêu cầu.';
+        const nextAttempt = response.code === 'COOLDOWN' ? '' : ' · Lần thử tiếp theo ' + (failures + 1) + '/5';
+        updateStatus(config.aiModel + ': ' + reason + ' Chờ ' + seconds + 's' + nextAttempt + '.', 'running');
         await waitForRetry(Math.min(1000, waitUntil - Date.now()), signal);
       }
     }

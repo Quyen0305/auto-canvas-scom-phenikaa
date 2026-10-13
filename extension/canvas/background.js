@@ -184,32 +184,47 @@ function parseRetryDelay(value) {
   return 0;
 }
 
-function parseApiError(res, text, attempt) {
+function retryWait(base, attempt, serverDelay = 0) {
+  const exponent = Math.max(0, Math.min(4, Math.floor(Number(attempt) || 0)));
+  const fallback = Math.min(base * (2 ** exponent), 300000);
+  return Math.ceil(serverDelay > 0 ? Math.max(1000, serverDelay) : fallback);
+}
+
+function parseApiError(res, text, attempt, apiKey = '') {
   let payload;
   try { payload = JSON.parse(text).error; } catch (_) {}
-  const message = payload?.message || `Lỗi Gemini API (${res.status})`;
+  const rawMessage = typeof payload?.message === 'string' ? payload.message : '';
+  let message = rawMessage;
+  if (apiKey) message = message.split(apiKey).join('[key đã ẩn]');
+  message = message.replace(/AIza[\w-]{20,}/g, '[key đã ẩn]').replace(/([?&]key=)[^&\s]+/gi, '$1[key đã ẩn]').slice(0, 500);
   const details = Array.isArray(payload?.details) ? payload.details : [];
-  if (res.status === 429 || payload?.status === "RESOURCE_EXHAUSTED") {
-    const violations = details.flatMap(detail => Array.isArray(detail.violations) ? detail.violations : []);
-    const quotaDescription = message + " " + JSON.stringify(violations);
-    if (/per[\s_-]*day|daily|\bRPD\b|\bTPD\b|limit\s*:\s*0(?:\.0+)?(?=\s|,|$)|"quotaValue"\s*:\s*"?0"?(?:[,}])/i.test(quotaDescription)) {
-      return apiError("Đã hết quota ngày hoặc model có quota bằng 0. Kiểm tra hạn mức của project trong Google AI Studio; tự động thử lại đã dừng.", "QUOTA_EXHAUSTED");
+  const describe = hint => `Gemini HTTP ${res.status}: ${hint}${message ? ' Chi tiết: ' + message : ''}`;
+  const retryInfo = details.filter(detail => detail?.['@type']?.endsWith('google.rpc.RetryInfo'));
+  const header = res.headers?.get?.('Retry-After');
+  const headerMs = typeof header === 'string' ? (/^\d+(\.\d+)?$/.test(header.trim()) ? Number(header) * 1000 : Date.parse(header) - Date.now()) : 0;
+  const match = rawMessage.match(/retry\s+(?:in|after)\s+([\d.]+)s/i);
+  const delays = [headerMs, ...retryInfo.map(info => parseRetryDelay(info.retryDelay)), match ? Number(match[1]) * 1000 : 0];
+  const serverDelay = Math.max(0, ...delays.filter(Number.isFinite));
+  if (res.status === 429 || payload?.status === 'RESOURCE_EXHAUSTED') {
+    const violations = details.flatMap(detail => Array.isArray(detail?.violations) ? detail.violations : []);
+    const quotaDescription = rawMessage + ' ' + JSON.stringify(violations);
+    if (payload?.code === 'quota_exceeded' || /per[\s_-]*day|daily|\bRPD\b|\bTPD\b|limit\s*:\s*0(?:\.0+)?(?=\s|,|$)|"(?:quotaValue|quota_limit_value|quotaLimitValue)"\s*:\s*"?0"?(?:[,}])/i.test(quotaDescription)) {
+      return apiError(describe('Hết quota ngày hoặc model có quota bằng 0. Kiểm tra hạn mức của project trong Google AI Studio; đã dừng thử lại.'), 'QUOTA_EXHAUSTED');
     }
-    const retryInfo = details.filter(detail => detail["@type"]?.endsWith("google.rpc.RetryInfo"));
-    const header = res.headers.get("Retry-After");
-    const headerMs = header === null ? 0 : (/^\d+(\.\d+)?$/.test(header.trim())
-      ? Number(header) * 1000 : Date.parse(header) - Date.now());
-    const match = message.match(/retry\s+(?:in|after)\s+([\d.]+)s/i);
-    const delays = [headerMs, ...retryInfo.map(info => parseRetryDelay(info.retryDelay)), match ? Number(match[1]) * 1000 : 0];
-    const serverDelay = Math.max(0, ...delays.filter(Number.isFinite));
-    const fallback = Math.min(5000 * (2 ** attempt), 300000);
-    const waitMs = Math.ceil(Math.max(serverDelay, serverDelay > 0 ? 1000 : fallback)) + 1000;
-    return apiError(`Gemini đang giới hạn tần suất (429). Chờ ${Math.ceil(waitMs / 1000)} giây trước khi thử lại.`, "RATE_LIMIT", true, waitMs);
+    return apiError(describe('Project đang giới hạn tần suất yêu cầu hoặc số token.'), 'RATE_LIMIT', true, retryWait(5000, attempt, serverDelay) + 1000);
   }
-  if ([500, 502, 503, 504].includes(res.status)) {
-    return apiError("Gemini tạm thời không khả dụng. Vui lòng thử lại.", "UNAVAILABLE", true, 3000 * (2 ** attempt));
+  if ([408, 500, 502, 503, 504].includes(res.status)) {
+    return apiError(describe('Dịch vụ tạm thời không khả dụng hoặc quá thời gian xử lý.'), 'UNAVAILABLE', true, retryWait(3000, attempt, serverDelay));
   }
-  return apiError(message, `HTTP_${res.status}`);
+  const hints = {
+    400: 'Yêu cầu hoặc cấu hình model không hợp lệ. Kiểm tra model trong popup và cấu hình project.',
+    401: 'API key thiếu, sai hoặc không còn hợp lệ. Nhập lại key.',
+    402: 'Tài khoản/project không đủ tín dụng. Kiểm tra tài khoản Google AI Studio; không tự thử lại.',
+    403: 'API key/project không có quyền truy cập model hoặc API. Kiểm tra quyền và hạn chế của key.',
+    404: 'Model không tồn tại hoặc project không có quyền dùng model này. Chọn model hợp lệ trong popup.'
+  };
+  const invalidKey = details.some(detail => detail?.reason === 'API_KEY_INVALID') || /API key (?:not valid|is invalid|invalid)/i.test(rawMessage);
+  return apiError(describe(invalidKey ? 'API key không hợp lệ. Nhập lại key.' : hints[res.status] || 'Yêu cầu bị từ chối.'), `HTTP_${res.status}`);
 }
 
 async function generateContent({ apiKey, model, attempt = 0 }, body) {
@@ -218,7 +233,7 @@ async function generateContent({ apiKey, model, attempt = 0 }, body) {
   requestInFlight = true;
   let timeoutId;
   try {
-    // Preserve the cooldown while the Manifest V3 worker sleeps; do not sleep inside it.
+    // Share cooldown across tabs in this worker; do not sleep inside it.
     const stored = await chrome.storage.session.get({ geminiNextRequestAt: 0 });
     const remaining = stored.geminiNextRequestAt - Date.now();
     if (remaining > 0) throw apiError(`Đang giãn cách yêu cầu Gemini. Chờ ${Math.ceil(remaining / 1000)} giây.`, "COOLDOWN", true, remaining);
@@ -232,7 +247,7 @@ async function generateContent({ apiKey, model, attempt = 0 }, body) {
     });
     const responseText = await res.text();
     if (!res.ok) {
-      const error = parseApiError(res, responseText, Math.max(0, Math.min(4, Number(attempt) || 0)));
+      const error = parseApiError(res, responseText, attempt, apiKey);
       if (error.retryAfterMs > 0) {
         await chrome.storage.session.set({ geminiNextRequestAt: Date.now() + Math.max(error.retryAfterMs, MIN_REQUEST_INTERVAL_MS) });
       }
@@ -241,7 +256,7 @@ async function generateContent({ apiKey, model, attempt = 0 }, body) {
     return JSON.parse(responseText);
   } catch (error) {
     if (error.name === "AbortError") throw apiError("Quá thời gian kết nối Gemini (20 giây).", "TIMEOUT", true, 5000);
-    if (error instanceof TypeError && !error.code) throw apiError("Không kết nối được Gemini. Kiểm tra mạng.", "NETWORK", true, 5000);
+    if (error.name === "TypeError" && !error.code) throw apiError("Không kết nối được Gemini. Kiểm tra mạng hoặc kết nối đến Google API.", "NETWORK", true, 5000);
     throw error;
   } finally {
     clearTimeout(timeoutId);
