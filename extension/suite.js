@@ -45,14 +45,15 @@
     task.promise.catch(()=>{});return task.promise;
   }
   function cancelPreparation(){const old=preparing;preparing=null;old?.engine.destroy();}
+  function keyUI(){
+    if(closed || preparing)return;
+    $('apiKey').placeholder=ai.keySaved?'Key tạm đã sẵn sàng · Nhập để thay thế':'Nhập API key cho phiên này';
+    $('aiStatus').textContent=ai.engine==='chrome_ai'?'AI trên máy · Không cần API key':ai.keySaved?'Key trong RAM đã sẵn sàng · Giữ đến khi thoát hẳn Chrome.':'Nhập API key · Chỉ giữ tạm trong RAM, không ghi xuống đĩa.';
+  }
   async function save(withKey=false){
     const value=$('aiModel').value,key=$('apiKey').value.trim();
-    if(withKey && value!=='chrome_ai' && !key)throw Error('Nhập API key cho lần chạy này. Key không được lưu.');
-    ai=await settings({engine:value==='chrome_ai'?'chrome_ai':'gemini_api',model:value==='chrome_ai'?ai.model:value,...(withKey?{apiKey:key}:{})});
-    if(closed)return;
-    if(withKey)$('apiKey').value='';
-    $('apiKey').placeholder='Nhập key cho lần chạy này';
-    if(!preparing)$('aiStatus').textContent=ai.engine==='chrome_ai'?'AI trên máy · Không cần API key':'Key chỉ dùng tạm trong RAM · Nhập lại mỗi lần bắt đầu.';
+    ai=await settings({engine:value==='chrome_ai'?'chrome_ai':'gemini_api',model:value==='chrome_ai'?ai.model:value,...(withKey && key?{apiKey:key}:{})});
+    keyUI();
   }
   async function canvas(command){
     let url;try{url=new URL(tabUrl);}catch{}
@@ -87,9 +88,22 @@
     // SCORM enables playback in the worker before either native AI host starts.
     const preparation=local && command!=='START'?prepareAI():Promise.resolve();
     try{
-      await save(true);if(token!==epoch)return;
+      if(!local){
+        const key=$('apiKey').value.trim();
+        if(!key && !ai.keySaved)throw Error('Nhập API key cho phiên này. Key chỉ giữ tạm trong RAM.');
+        const pending=chrome.runtime.sendMessage({action:'SUITE_START',tabId,command:command==='START'?'scorm':command,
+          data:{model:$('aiModel').value,...(key?{apiKey:key}:{})}});
+        $('apiKey').value='';
+        const response=await pending;
+        if(token!==epoch || closed)return;
+        if(!response?.success)throw Error(response?.error || 'Không bắt đầu được phiên.');
+        if(response.data?.cancelled)return;
+        ai.keySaved=true;keyUI();notice(response.data?.text || response.data?.message || 'Đang bắt đầu…');
+        return;
+      }
+      await save();if(token!==epoch)return;
       if(command==='START'){
-        const response=await chrome.runtime.sendMessage({type:'START',tabId});
+        const response=await chrome.runtime.sendMessage({type:'START',tabId,ai:{engine:ai.engine,model:ai.model}});
         if(response?.error)throw Error(response.error);
         if(local && token===epoch && !closed && (response?.needsPreparation || response?.running)) prepareAI();
         notice(response?.message || 'Đang bắt đầu…');
@@ -106,14 +120,17 @@
       if(canvasMode)await canvas('stop');
       else {const result=await chrome.runtime.sendMessage({type:'STOP',tabId});if(result?.error)throw Error(result.error);}
       await chrome.runtime.sendMessage({action:'SUITE_CLEAR_KEY',data:{tabId}});
-      $('apiKey').value='';
-      notice('Đã dừng. Nhập lại API key để bắt đầu lần mới.');errorUntil=Date.now()+1500;
+      $('apiKey').value='';ai=await settings();keyUI();
+      notice('Đã dừng. Key vẫn giữ trong RAM đến khi thoát hẳn Chrome.');errorUntil=Date.now()+1500;
     }catch(error){notice(error.message,true);}
   }
   $('aiModel').addEventListener('change',()=>{
     aiUI();modelReady=false;
     if($('aiModel').value==='chrome_ai')prepareAI();else cancelPreparation();
     save().catch(error=>notice(error.message,true));
+  });
+  $('apiKey').addEventListener('input',()=>{
+    if(loaded && $('apiKey').value.trim())save(true).catch(error=>notice(error.message,true));
   });
   $('start').addEventListener('click',()=>start('START'));
   $('canvas-auto').addEventListener('click',()=>start('auto'));
@@ -128,13 +145,13 @@
   }
   window.addEventListener('pagehide',()=>{closed=true;epoch++;$('apiKey').value='';cancelPreparation();});
   (async()=>{
-    const [config,tabs]=await Promise.all([settings(),chrome.tabs.query({active:true,currentWindow:true})]);
+    const tabs=await chrome.tabs.query({active:true,currentWindow:true});
     if(closed)return;
-    ai=config;tabId=tabs[0]?.id;tabUrl=tabs[0]?.url || '';
+    tabId=tabs[0]?.id;tabUrl=tabs[0]?.url || '';
+    const config=await settings();if(closed)return;ai=config;
     if(![...$('aiModel').options].some(option=>option.value===ai.model))$('aiModel').add(new Option(ai.model,ai.model));
     $('aiModel').value=ai.engine==='chrome_ai'?'chrome_ai':ai.model;aiUI();
-    $('apiKey').placeholder='Nhập key cho lần chạy này';
-    $('aiStatus').textContent=ai.engine==='chrome_ai'?'AI trên máy · Tự chuẩn bị khi bắt đầu':'Key chỉ dùng tạm trong RAM · Nhập lại mỗi lần bắt đầu.';
+    keyUI();
     let url;try{url=new URL(tabUrl);}catch{}
     const isCanvas=url && url.hostname!=='scorm.eduone.io.vn' && (/\/quizzes\//.test(url.pathname)||url.protocol==='file:');
     $('context').textContent=isCanvas?'Canvas Quiz':url?.hostname==='scorm.eduone.io.vn'?'Bài học SCORM':'Mở trang học để bắt đầu';

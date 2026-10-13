@@ -5,7 +5,7 @@ const vm=require('node:vm');
 const path=require('node:path');
 const {webcrypto}=require('node:crypto');
 
-function setup({blocked=false,oldChrome=false,fetcher}={}) {
+function setup({blocked=false,oldChrome=false,fetcher,volatileSession={}}={}) {
   const listeners=[],nativeWrites=[];
   let removed,updated;
   const disk={apiKey:'OLD_SECRET','canvas:apiKey':'OLD_SECRET','suite:previousScormKey':'OLD_SECRET',
@@ -16,7 +16,12 @@ function setup({blocked=false,oldChrome=false,fetcher}={}) {
     async remove(keys){if(blocked)throw Error('Storage restricted');for(const key of keys)delete disk[key];}
   };
   if(!oldChrome)local.setAccessLevel=async()=>{};
-  const chrome={storage:{local,...(!oldChrome?{session:{...local}}:{})},
+  const session={
+    async get(key){return {[key]:volatileSession[key]};},
+    async set(values){Object.assign(volatileSession,JSON.parse(JSON.stringify(values)));},
+    async remove(key){delete volatileSession[key];}
+  };
+  const chrome={storage:{local,...(!oldChrome?{session}:{})},
     runtime:{id:'suite',getURL:p=>'chrome-extension://suite/'+p,onMessage:{addListener:fn=>listeners.push(fn)},onConnect:{addListener(){}}},
     tabs:{onRemoved:{addListener(fn){removed=fn;}},onUpdated:{addListener(fn){updated=fn;}},get:async()=>({url:'https://scorm.eduone.io.vn/en/learn/test'}),sendMessage:async()=>({})},
     scripting:{executeScript:async()=>[]}};
@@ -39,10 +44,10 @@ test('old Chrome and blocked disk still boot the worker and accept a manually en
   assert.equal(JSON.stringify(await h.request({type:'GET_STATUS',tabId:7})).includes('TEST_RAM_KEY'),false);
 });
 
-test('key is cleared on Stop and cannot survive a worker restart',async()=>{
+test('key survives Stop but is absent in a new browser session',async()=>{
   const h=setup();await h.request({action:'SUITE_SETTINGS',data:{tabId:7,apiKey:'TEST_RAM_KEY'}});
   await h.request({type:'START',tabId:7});await h.request({type:'STOP',tabId:7});
-  assert.equal((await h.request({action:'SUITE_SETTINGS',tabId:7})).data.keySaved,false);
+  assert.equal((await h.request({action:'SUITE_SETTINGS',tabId:7})).data.keySaved,true);
   const restarted=setup();assert.equal((await restarted.request({action:'SUITE_SETTINGS',tabId:7})).data.keySaved,false);
   assert.equal(h.nativeWrites.length,0);
 });
@@ -81,10 +86,10 @@ test('solving the same Canvas question twice always requests a fresh AI answer',
   assert.equal(calls,2);assert.equal(second.data.cachedCount,0);assert.equal(h.nativeWrites.length,0);
 });
 
-test('Canvas on-page Stop clears its RAM key',async()=>{
+test('Canvas on-page Stop retains the browser-session key',async()=>{
   const h=setup();await h.request({action:'SUITE_SETTINGS',data:{tabId:9,apiKey:'TEST_RAM_KEY'}});
   await h.request({action:'SET_AUTO_STATE',data:{enabled:false}},{url:'https://canvas.test/courses/1/quizzes/2/take',tab:{id:9}});
-  assert.equal((await h.request({action:'SUITE_SETTINGS',tabId:9})).data.keySaved,false);
+  assert.equal((await h.request({action:'SUITE_SETTINGS',tabId:9})).data.keySaved,true);
 });
 
 test('stopping one tab cannot erase the RAM key of another active run',async()=>{
@@ -99,17 +104,78 @@ test('stopping one tab cannot erase the RAM key of another active run',async()=>
   assert.equal(canvas.data.apiKey,'KEY_TWO');
 });
 
-test('closing a Canvas tab discards its key even without a SCORM run record',async()=>{
+test('closing a Canvas tab keeps its key for the rest of the browser session',async()=>{
   const h=setup();await h.request({action:'SUITE_SETTINGS',data:{apiKey:'TEST_KEY',tabId:9}});
   await h.removed(9);
-  assert.equal((await h.request({action:'SUITE_SETTINGS',tabId:9})).data.keySaved,false);
+  assert.equal((await h.request({action:'SUITE_SETTINGS',tabId:9})).data.keySaved,true);
 });
 
-test('Canvas key survives same-quiz navigation but is discarded when leaving the quiz',async()=>{
+test('browser-session key survives navigation to another quiz',async()=>{
   const h=setup();h.context.chrome.tabs.get=async()=>({url:'https://canvas.test/courses/1/quizzes/2/take'});
   await h.request({action:'SUITE_SETTINGS',data:{apiKey:'TEST_KEY',tabId:9}});
   await h.updated(9,{url:'https://canvas.test/courses/1/quizzes/2/take/questions/1'});
   assert.equal((await h.request({action:'SUITE_SETTINGS',tabId:9})).data.keySaved,true);
   await h.updated(9,{url:'https://canvas.test/courses/1/quizzes/3/take'});
-  assert.equal((await h.request({action:'SUITE_SETTINGS',tabId:9})).data.keySaved,false);
+  assert.equal((await h.request({action:'SUITE_SETTINGS',tabId:9})).data.keySaved,true);
+});
+
+test('key remains in browser-session RAM after an ordinary worker restart',async()=>{
+  const volatileSession={};const h=setup({volatileSession});
+  await h.request({action:'SUITE_SETTINGS',data:{apiKey:'TEST_KEY',model:'gemini-2.5-flash',tabId:7}});
+  const restarted=setup({volatileSession});
+  const restored=(await restarted.request({action:'SUITE_SETTINGS',tabId:7})).data;
+  assert.equal(restored.keySaved,true);assert.equal(restored.model,'gemini-2.5-flash');
+  await restarted.request({type:'STOP',tabId:7});
+  assert.equal((await restarted.request({action:'SUITE_SETTINGS',tabId:7})).data.keySaved,true);
+  assert.equal(h.nativeWrites.length,0);assert.equal(restarted.nativeWrites.length,0);
+});
+
+test('one worker-owned request accepts the key and starts even after the popup disappears',async()=>{
+  const h=setup({blocked:true,oldChrome:true});
+  const pending=h.request({action:'SUITE_START',tabId:7,command:'scorm',data:{engine:'gemini_api',model:'gemini-2.5-flash',apiKey:'TEST_KEY'}});
+  const response=await pending;
+  assert.equal(response.success,true);assert.equal(response.data.running,true);assert.equal(h.nativeWrites.length,0);
+});
+
+test('Stop cancels a pending worker-owned start before it can store or use a key',async()=>{
+  const h=setup();let release;
+  h.context.chrome.tabs.get=()=>new Promise(resolve=>{release=resolve;});
+  const pending=h.request({action:'SUITE_START',tabId:7,command:'scorm',data:{model:'gemini-2.5-flash',apiKey:'TEST_KEY'}});
+  await h.request({type:'STOP',tabId:7});
+  release({url:'https://scorm.eduone.io.vn/en/learn/test'});
+  const result=await pending;assert.equal(result.data.cancelled,true);
+  assert.equal((await h.request({action:'SUITE_SETTINGS',tabId:7})).data.keySaved,false);
+  assert.notEqual((await h.request({type:'GET_STATUS',tabId:7})).run?.running,true);
+});
+
+test('restricted session storage falls back to worker RAM without disk writes',async()=>{
+  const h=setup({blocked:true});
+  for(const method of ['get','set','remove'])h.context.chrome.storage.session[method]=async()=>{throw Error('Session restricted');};
+  await h.request({action:'SUITE_SETTINGS',data:{apiKey:'TEST_KEY',tabId:7}});
+  assert.equal((await h.request({action:'SUITE_SETTINGS',tabId:7})).data.keySaved,true);
+  await h.request({type:'STOP',tabId:7});
+  assert.equal((await h.request({action:'SUITE_SETTINGS',tabId:7})).data.keySaved,true);
+  assert.equal(h.nativeWrites.length,0);
+});
+
+test('another tab cannot change the model of a worker-owned SCORM Start in progress',async()=>{
+  const h=setup();let release;
+  await h.request({action:'SUITE_SETTINGS',data:{apiKey:'KEY_TWO',model:'gemini-3.8-flash',tabId:8}});
+  h.context.chrome.tabs.sendMessage=(id,message)=>id===7 && message.type==='STOP'?new Promise(resolve=>{release=resolve;}):Promise.resolve({});
+  const pending=h.request({action:'SUITE_START',tabId:7,command:'scorm',data:{model:'gemini-2.5-flash',apiKey:'KEY_ONE'}});
+  while(!release)await new Promise(resolve=>setImmediate(resolve));
+  await h.request({action:'CANVAS_STORAGE',data:{area:'local',method:'get',value:['aiModel']}},
+    {url:'https://canvas.test/courses/1/quizzes/2/take',tab:{id:8}});
+  release({});
+  assert.equal((await pending).data.config.model,'gemini-2.5-flash');
+});
+
+test('the browser-session key is ready in a new tab after the original tab closes',async()=>{
+  const h=setup();await h.request({action:'SUITE_SETTINGS',data:{apiKey:'TEST_KEY',tabId:7}});
+  await h.removed(7);
+  const newTab=(await h.request({action:'SUITE_SETTINGS',tabId:9})).data;
+  assert.equal(newTab.keySaved,true);
+  const settings=await h.request({action:'CANVAS_STORAGE',data:{area:'local',method:'get',value:['apiKey']}},
+    {url:'https://canvas.test/courses/1/quizzes/2/take',tab:{id:9}});
+  assert.equal(settings.data.apiKey,'TEST_KEY');assert.equal(h.nativeWrites.length,0);
 });

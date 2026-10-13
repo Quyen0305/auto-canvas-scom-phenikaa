@@ -3,7 +3,41 @@ importScripts('runtime-storage.js','shared-settings.js','background.js','canvas-
 const SuiteCanvasAI = {solve: requestCanvasAI};
 importScripts('canvas/background.js');
 
+const suiteStarts=new Map();
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
+  const trusted=sender.url?.startsWith(chrome.runtime.getURL(''));
+  if(message.type==='STOP' && trusted)suiteStarts.delete(message.tabId);
+  if(message.action==='SET_AUTO_STATE' && message.data?.enabled===false && sender.tab)suiteStarts.delete(sender.tab.id);
+  if(message.action==='SUITE_START') {
+    if(sender.id && sender.id!==chrome.runtime.id)return;
+    if(!trusted)return;
+    const id=message.tabId,token=crypto.randomUUID();suiteStarts.set(id,token);
+    const current=()=>suiteStarts.get(id)===token;
+    (async()=>{
+      if(!Number.isInteger(id) || !['scorm','auto','target'].includes(message.command))throw Error('Thao tác bắt đầu không hợp lệ.');
+      const tab=await chrome.tabs.get(id),url=new URL(tab.url || '');
+      const scorm=url.hostname==='scorm.eduone.io.vn';
+      if(message.command==='scorm'?!scorm:scorm || !(url.protocol==='file:' || /\/quizzes\//.test(url.pathname)))throw Error('Mở đúng trang học trước khi bắt đầu.');
+      if(!current())return {cancelled:true};
+      const ai=await SuiteSettings.save({...message.data,engine:'gemini_api',tabId:id});
+      if(!current())return {cancelled:true};
+      if(!ai.keySaved)throw Error('Nhập API key cho phiên này. Key chỉ giữ tạm trong RAM.');
+      if(message.command==='scorm')return handle({type:'START',tabId:id,ai},sender);
+      const control={action:'SUITE_CANVAS_CONTROL',command:message.command};
+      let response;
+      try {response=await chrome.tabs.sendMessage(id,control);}
+      catch {
+        await chrome.scripting.insertCSS({target:{tabId:id},files:['canvas/styles.css','canvas-compact.css']});
+        if(!current())return {cancelled:true};
+        await chrome.scripting.executeScript({target:{tabId:id},files:['canvas-compat.js','canvas/content.js','canvas-controls.js']});
+        if(!current())return {cancelled:true};
+        response=await chrome.tabs.sendMessage(id,control);
+      }
+      if(response?.error)throw Error(response.error);
+      return response;
+    })().then(data=>reply({success:true,data}),error=>reply({success:false,error:error.message})).finally(()=>{if(current())suiteStarts.delete(id);});
+    return true;
+  }
   if(message.action==='SUITE_HEARTBEAT') {
     if(sender.id && sender.id!==chrome.runtime.id)return;
     if(!sender.tab)return;
@@ -14,18 +48,15 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
   }
   if(message.action==='SUITE_CLEAR_KEY') {
     if(sender.id && sender.id!==chrome.runtime.id)return;
-    const trusted=sender.url?.startsWith(chrome.runtime.getURL(''));
     if(!trusted && !sender.tab)return;
-    SuiteSettings.clearKey(trusted ? message.data?.tabId : sender.tab.id).then(()=>reply({success:true}),error=>reply({success:false,error:error.message}));return true;
+    suiteStarts.delete(trusted ? message.data?.tabId : sender.tab.id);
+    // Compatibility with older popups: Stop cancels startup, not the browser-session key.
+    reply({success:true});return true;
   }
   if(message.action==='SUITE_SETTINGS') {
     if(sender.id && sender.id!==chrome.runtime.id)return;
     if(!sender.url?.startsWith(chrome.runtime.getURL('')))return;
-    const task=message.data ? (async()=>{
-      const patch={...message.data};
-      if(typeof patch.apiKey==='string')patch.sourceUrl=(await chrome.tabs.get(patch.tabId)).url;
-      return SuiteSettings.save(patch);
-    })() : SuiteSettings.ensure(message.tabId);
+    const task=message.data ? SuiteSettings.save(message.data) : SuiteSettings.ensure(message.tabId);
     task.then(data=>reply({success:true,data}),error=>reply({success:false,error:error.message}));return true;
   }
   if(message.action !== 'CANVAS_STORAGE')return;
@@ -36,12 +67,14 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
     const {area,method,value}=message.data || {};
     const keys=typeof value==='string'?[value]:Array.isArray(value)?value:value && typeof value==='object'?Object.keys(value):[];
     if(area!=='local'||!['get','set'].includes(method)||!keys.length||keys.some(key=>!allowed.has(key))) throw new Error('Yêu cầu dữ liệu Canvas không hợp lệ.');
-    await SuiteSettings.ensure();
+    const ai=await SuiteSettings.ensure(sender.tab.id);
     if(method==='set') {
       for(const key of ['apiKey','aiModel','aiEngine'])if(Object.hasOwn(value,key))throw new Error('Đổi AI tại popup chung.');
       value.autoClickAnswer=true;value.autoNextQuestion=true;value.answerReviewVersion=2;
     }
     const result=await CanvasCompat.create(false).storage.local[method](value);
+    if(method==='get' && keys.includes('aiModel'))result.aiModel=ai.model;
+    if(method==='get' && keys.includes('aiEngine'))result.aiEngine=ai.engine;
     if(method==='get' && keys.includes('apiKey'))result.apiKey=await SuiteSettings.keyForTab(sender.tab.id);
     return result;
   })().then(data=>reply({success:true,data}),error=>reply({success:false,error:error.message}));

@@ -74,7 +74,6 @@ async function writeAutoState(data, sender) {
       expiresAt: Date.now() + 30 * 60 * 1000
     } });
   }
-  if (scope && data.enabled === false) await globalThis.SuiteSettings?.clearKey(sender.tab.id);
   return { enabled: Boolean(scope && data.enabled === true) };
 }
 

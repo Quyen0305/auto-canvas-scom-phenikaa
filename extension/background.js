@@ -105,7 +105,7 @@ async function stop(id, text = 'Đã dừng.') {
   for (const [key, controller] of pending) if (key.startsWith(`${id}:`)) controller.abort();
   await broadcast(id, {type: 'STOP', message: text});
 }
-async function preparePlayback(id) {
+async function preparePlayback(id, ai) {
   // Claim this startup before waiting: Stop during injection must cancel it.
   const stopped = stop(id), token = crypto.randomUUID();
   starting.set(id, token);
@@ -113,7 +113,12 @@ async function preparePlayback(id) {
   try {
     await stopped;
     if (!current()) return null;
-    const {config = {}, apiKey: legacyKey} = await (globalThis.SuiteStorage || chrome.storage).local.get(['config', 'apiKey']);
+    const {config: storedConfig = {}, apiKey: legacyKey} = await (globalThis.SuiteStorage || chrome.storage).local.get(['config', 'apiKey']);
+    const config = {...storedConfig};
+    if (ai) {
+      if (!['gemini_api','chrome_ai'].includes(ai.engine) || !/^gemini-[a-zA-Z0-9.-]+$/.test(ai.model)) throw Error('Mô hình AI không hợp lệ.');
+      config.provider = ai.engine === 'chrome_ai' ? 'builtin' : 'gemini'; config.model = ai.model;
+    }
     const apiKey = globalThis.SuiteSettings ? await SuiteSettings.keyForTab(id) : legacyKey;
     const tab = await chrome.tabs.get(id);
     if (!current()) return null;
@@ -237,12 +242,12 @@ async function handle(message, sender) {
       await (globalThis.SuiteStorage || chrome.storage).session.set({[key]: {text: String(message.text).slice(0, 1500), at: Date.now(), frame: sender.frameId, playback}});
       return {ok: true};
     }
-    if (message.type === 'COMPLETE') { await stop(id, 'Đã hoàn thành bài học và dừng tự động.'); await globalThis.SuiteSettings?.clearKey(id); return {ok: true}; }
-    if (message.type === 'PAUSE') { await stop(id, String(message.text).slice(0, 1500)); await globalThis.SuiteSettings?.clearKey(id); return {ok: true}; }
+    if (message.type === 'COMPLETE') { await stop(id, 'Đã hoàn thành bài học và dừng tự động.'); return {ok: true}; }
+    if (message.type === 'PAUSE') { await stop(id, String(message.text).slice(0, 1500)); return {ok: true}; }
     return {};
   }
   if (message.type === 'START') {
-    const prepared = await preparePlayback(id);
+    const prepared = await preparePlayback(id, message.ai);
     if (!prepared) return getRun(id);
     const {run, apiKey} = prepared, config = run.config;
     try {
@@ -261,7 +266,7 @@ async function handle(message, sender) {
       throw error;
     }
   }
-  if (message.type === 'STOP') { await stop(id); await globalThis.SuiteSettings?.clearKey(id); return {ok: true}; }
+  if (message.type === 'STOP') { await stop(id); return {ok: true}; }
   if (message.type === 'BUILTIN_STATUS') return builtinStatus();
   if (message.type === 'ENSURE_BUILTIN' || message.type === 'OPEN_BUILTIN') {
     await openBuiltin();
@@ -290,15 +295,14 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
 });
 chrome.tabs.onRemoved.addListener(async id => {
   await stop(id);
-  await globalThis.SuiteSettings?.clearKey(id);
+
   const all = await (globalThis.SuiteStorage || chrome.storage).session.get(null);
   await (globalThis.SuiteStorage || chrome.storage).session.remove(Object.keys(all).filter(k => k === tabKey(id) || k.startsWith(`status:${id}:`)));
 });
 chrome.tabs.onUpdated.addListener(async (id, change) => {
   if (!change.url) return;
-  await globalThis.SuiteSettings?.navigate(id, change.url);
   const run = await getRun(id);
   if ((run?.running || run?.playbackOnly || run?.needsPreparation) && new URL(change.url).origin !== run.origin) {
-    await stop(id, 'Đã rời trang bài học.'); await globalThis.SuiteSettings?.clearKey(id);
+    await stop(id, 'Đã rời trang bài học.');
   }
 });

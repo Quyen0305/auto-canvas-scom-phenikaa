@@ -1,12 +1,13 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const {JSDOM}=require('jsdom');
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
-async function setup({canvas=false,engine='gemini_api',prepare=async()=>{}}={}){
+async function setup({canvas=false,engine='gemini_api',prepare=async()=>{},keyReady=false}={}){
   const dom=new JSDOM(fs.readFileSync('extension/suite-popup.html','utf8'),{url:'https://extension.test/suite-popup.html',runScripts:'outside-only'});
-  const w=dom.window,messages=[],commands=[],ai={engine,model:'gemini-2.5-flash',keySaved:true};let preparations=0;
+  const w=dom.window,messages=[],commands=[],ai={engine,model:'gemini-2.5-flash',keySaved:keyReady};let preparations=0;
   w.LessonBuiltin={Engine:class{prepare(){preparations++;return prepare();}destroy(){}}};
   w.chrome={runtime:{sendMessage:async message=>{
     messages.push(message);
-    if(message.action==='SUITE_SETTINGS'){Object.assign(ai,message.data);return {success:true,data:{...ai}};}
+    if(message.action==='SUITE_SETTINGS'){Object.assign(ai,message.data);if(message.data?.apiKey)ai.keySaved=true;return {success:true,data:{...ai}};}
+    if(message.action==='SUITE_START'){Object.assign(ai,message.data);ai.keySaved=true;commands.push(message.command);return {success:true,data:{running:true,text:'Đang bắt đầu.'}};}
     if(message.type==='GET_STATUS')return {frames:[],builtin:{ready:false}};
     return {ok:true,message:'Đang bắt đầu.'};
   }},tabs:{query:async()=>[{id:7,url:canvas?'https://canvas.example/courses/1/quizzes/2/take':'https://scorm.eduone.io.vn/en/learn/demo'}],sendMessage:async(id,message)=>{commands.push(message.command);return {text:'Sẵn sàng.'};}}};
@@ -21,15 +22,33 @@ test('one model selector with no settings page, duplicate panels, checkboxes or 
   h.el('tab-canvas').click();assert.equal(h.el('panel-canvas').hidden,false);
   assert.equal(h.el('aiModel').value,'gemini-2.5-flash');h.close();
 });
-test('API key remains in the input until Start and is never saved on blur',async()=>{
-  const h=await setup();assert.match(h.el('apiKey').placeholder,/lần chạy/);
-  h.el('apiKey').value='test-only';h.el('apiKey').dispatchEvent(new h.w.Event('change'));await flush();
-  assert.equal(h.ai.apiKey,undefined);assert.equal(h.el('apiKey').value,'test-only');
-  h.el('start').click();await flush();assert.equal(h.ai.apiKey,'test-only');assert.equal(h.el('apiKey').value,'');h.close();
+test('typing receives the key into temporary RAM before closing the popup',async()=>{
+  const h=await setup();h.el('apiKey').value='test-only';h.el('apiKey').dispatchEvent(new h.w.Event('input'));await flush();
+  assert.equal(h.ai.apiKey,'test-only');assert.match(h.el('aiStatus').textContent,/RAM/);
+  h.close();assert.equal(h.ai.keySaved,true);
 });
-test('blank key prevents starting even when an earlier run had a RAM key',async()=>{
+test('reopening with a RAM key permits starting from an empty key input',async()=>{
+  const h=await setup({keyReady:true});h.el('apiKey').value='';h.el('start').click();await flush();
+  assert.ok(h.messages.some(m=>m.action==='SUITE_START'));h.close();
+});
+test('blank input without a RAM key prevents starting',async()=>{
   const h=await setup();h.el('apiKey').value='';h.el('start').click();await flush();
-  assert.equal(h.messages.some(m=>m.type==='START'),false);assert.match(h.el('status').textContent,/Nhập API key/);h.close();
+  assert.equal(h.messages.some(m=>m.action==='SUITE_START'),false);assert.match(h.el('status').textContent,/Nhập API key/);h.close();
+});
+test('closing immediately after Start cannot cancel the already dispatched worker request',async()=>{
+  const h=await setup();h.el('start').click();h.w.dispatchEvent(new h.w.Event('pagehide'));await flush();
+  assert.ok(h.messages.some(m=>m.action==='SUITE_START'));h.close();
+});
+test('a cancelled Start response arriving after Stop cannot report a restarted run',async()=>{
+  const h=await setup({keyReady:true});let release;
+  try {
+    const send=h.w.chrome.runtime.sendMessage;
+    h.w.chrome.runtime.sendMessage=m=>m.action==='SUITE_START'?new Promise(resolve=>{release=resolve;}):send(m);
+    h.el('start').click();await flush();h.el('stop').click();await flush();
+    release({success:true,data:{cancelled:true}});await flush();
+    assert.match(h.el('status').textContent,/Đã dừng/);
+    assert.match(h.el('apiKey').placeholder,/sẵn sàng/);
+  } finally {h.close();}
 });
 test('popup has no archive/export controls and clears the input on close',async()=>{
   const h=await setup();assert.equal(h.el('export-questions'),null);assert.equal(h.el('clear-cache'),null);
@@ -54,7 +73,7 @@ test('Stop while preparing AI prevents a late Canvas automatic start',async()=>{
 });
 test('SCORM Start and Stop remain available with the shared model selector',async()=>{
   const h=await setup();h.el('start').click();await flush();h.el('stop').click();await flush();
-  assert.ok(h.messages.some(m=>m.type==='START'));assert.ok(h.messages.some(m=>m.type==='STOP'));h.close();
+  assert.ok(h.messages.some(m=>m.action==='SUITE_START'));assert.ok(h.messages.some(m=>m.type==='STOP'));h.close();
 });
 
 test('SCORM popup waits for playback setup before starting native AI preparation',async()=>{

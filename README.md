@@ -1,6 +1,6 @@
 # Auto Canvas SCOM Phenikaa
 
-Tiện ích Chrome hỗ trợ làm bài trắc nghiệm trên Canvas, xem video bài giảng và làm bài tập theo dõi bài học SCORM. Phiên bản hiện tại: **2.3.0**.
+Tiện ích Chrome hỗ trợ làm bài trắc nghiệm trên Canvas, xem video bài giảng và làm bài tập theo dõi bài học SCORM. Phiên bản hiện tại: **2.3.1**.
 
 Tên repository giữ chữ `scom`; tên kỹ thuật của định dạng bài học là **SCORM**. Khi cài vào Chrome, tiện ích hiển thị tên **Trợ lý học tập · Canvas & SCORM**.
 
@@ -48,9 +48,12 @@ Bấm biểu tượng tiện ích để mở cửa sổ điều khiển, gọi l
 1. Tạo hoặc lấy API key theo [hướng dẫn Gemini API của Google](https://ai.google.dev/gemini-api/docs/api-key).
 2. Trong popup, chọn một model Gemini mà project của bạn có quyền sử dụng.
 3. Dán key vào ô **Gemini API key**.
-4. Bấm **Bắt đầu** hoặc chế độ Canvas cần chạy. Tiện ích chỉ nhận key khi bấm chạy; rời ô nhập không lưu key.
+4. Khi nhập key, tiện ích nhận ngay vào RAM của phiên Chrome, dùng chung cho Canvas và SCORM. Dòng **Key tạm trong RAM đã sẵn sàng** xác nhận key đã nhận; đóng/mở popup không làm xóa key.
+5. Bấm **Bắt đầu** hoặc chế độ Canvas cần chạy. Thao tác khởi động Gemini API được worker tiếp tục xử lý kể cả khi đóng popup ngay sau khi bấm.
 
-**Mỗi lần bắt đầu một lượt mới phải nhập lại key.** Sau khi bắt đầu, ô nhập được xóa để che key; bản dùng tạm vẫn ở RAM cho lượt đang chạy, vì vậy đóng popup không làm dừng lượt này. Key bị xóa khi Dừng, khi kết thúc tự động, tải lại/cập nhật tiện ích, service worker khởi động lại hoặc đóng trình duyệt. Đóng popup trước khi bấm chạy sẽ bỏ key chưa dùng.
+Key chỉ dùng tạm trong phiên Chrome, không ghi xuống đĩa. Ô nhập được làm trống khi bấm chạy để che key; mở lại popup vẫn nhận diện được key tạm và không bắt nhập lại. Bấm Dừng, kết thúc lượt, đóng tab hoặc chuyển sang bài khác không xóa key. Key chỉ mất khi Chrome thực sự thoát; nhập key mới sẽ thay key đang dùng. Chrome cũng tự xóa bộ nhớ phiên khi tải lại, cập nhật, vô hiệu hóa hoặc gỡ tiện ích.
+
+Chrome hỗ trợ `storage.session` giữ key và lựa chọn AI trong RAM ngay cả khi service worker tự khởi động lại. Không gọi `setAccessLevel` để dùng vùng nhớ này. Nếu máy thiếu/chặn API bộ nhớ phiên, tiện ích dùng RAM của worker; ở chế độ dự phòng đó, worker khởi động lại sẽ mất key và cần nhập lại. Key không được hiển thị lại trên popup hoặc ghi vào `storage.local`.
 
 Chọn model mà project Google của bạn được phép sử dụng. Danh sách trong tiện ích là danh sách tĩnh; thông báo của API quyết định model và hạn mức có thực sự khả dụng hay không.
 
@@ -128,7 +131,7 @@ Khi nâng cấp, tiện ích thử xóa key cũ và kho đáp án đã lưu. N�
 3. Tại `chrome://extensions`, bấm biểu tượng **Tải lại** trên thẻ tiện ích.
 4. F5 các trang học đang mở, rồi mở popup và chạy lại.
 
-Sau khi tải lại tiện ích, cấu hình được đặt về mặc định và key phải nhập lại. Mã nguồn trên branch `feature/ai-canvas-enhancements` là bản này; khi tải ZIP, chọn đúng branch trước.
+Sau khi tải lại tiện ích, bộ nhớ phiên bị Chrome xóa, cấu hình được đặt về mặc định và key phải nhập lại. Mã nguồn trên branch `feature/ai-canvas-enhancements` là bản này; khi tải ZIP, chọn đúng branch trước.
 
 ## 6. Xử lý lỗi thường gặp
 
@@ -136,7 +139,7 @@ Sau khi tải lại tiện ích, cấu hình được đặt về mặc định 
 | --- | --- |
 | Không cài được, báo thiếu `manifest.json` | Giải nén ZIP và chọn thư mục `extension`, không chọn thư mục ngoài cùng. |
 | `Extension context invalidated` hoặc tab chưa kết nối | Tải lại tiện ích tại `chrome://extensions`, sau đó F5 trang học. |
-| Ô API key trống sau khi Bắt đầu | Key đã được dùng tạm trong RAM cho lượt này. Muốn bắt đầu lượt mới, nhập lại key. |
+| Ô API key trống sau khi Bắt đầu | Key vẫn dùng tạm trong RAM của phiên Chrome. Đóng popup, Dừng hoặc đổi tab/bài không xóa key; xem dòng trạng thái key tạm. |
 | `setAccessLevel is not a function` hoặc service worker không đăng ký được | Cập nhật sang bản 2.3.0, tải lại tiện ích và F5 trang học. Bản này không cần API đó để khởi động. |
 | Windows chặn truy cập ổ C | Tiện ích không cần ghi key/cấu hình/đáp án ra đĩa để chạy. Quyền cài/chạy tiện ích và quyền truy cập trang/API vẫn phải được trình duyệt cho phép; thông báo chặn ổ C là vấn đề riêng. |
 | Gemini báo lỗi key, model không khả dụng hoặc `429` | Kiểm tra key/quyền model và quota trong Google AI Studio; làm theo thông báo chờ hoặc đổi model phù hợp. |
@@ -148,15 +151,15 @@ Sau khi tải lại tiện ích, cấu hình được đặt về mặc định 
 
 ## 7. Dữ liệu và quyền truy cập
 
-API key, cấu hình AI và trạng thái chạy chỉ giữ trong RAM của service worker. Không dùng `storage.local` hoặc `storage.session` để lưu mới. Quyền `storage` còn lại chỉ để thử xóa dữ liệu nhạy cảm của bản cũ; lỗi quyền không cản trở tiện ích chạy.
+API key và lựa chọn AI giữ trong RAM của phiên Chrome qua `storage.session` nếu có hỗ trợ, với RAM của worker làm dự phòng. Trạng thái chạy dùng RAM của worker. Không ghi mới vào `storage.local`; vùng đó chỉ được đọc/xóa để dọn dữ liệu nhạy cảm của bản cũ. Lỗi quyền lưu trữ không cản trở tiện ích khởi động.
 
-Service worker có thể bị Chrome kết thúc khi không hoạt động. SCORM gửi tín hiệu trạng thái mỗi 15 giây trong lượt đang chạy để duy trì phiên thông thường. Nếu trình duyệt vẫn khởi động lại worker hoặc tab bị đóng băng, trạng thái và key tạm bị mất; mở popup, nhập lại key và bấm chạy.
+Service worker có thể bị Chrome kết thúc khi không hoạt động. SCORM gửi tín hiệu trạng thái mỗi 15 giây trong lượt đang chạy để duy trì phiên thông thường. Nếu trình duyệt vẫn khởi động lại worker hoặc tab bị đóng băng, trạng thái chạy có thể mất; mở popup và bấm chạy lại. Key còn trong RAM phiên nếu vùng nhớ đó có hỗ trợ, nên không phải nhập lại. Chỉ chế độ dự phòng worker RAM mới mất cả key khi worker khởi động lại.
 
 Khi dùng Gemini API, nội dung câu hỏi, các lựa chọn và ngữ cảnh phản hồi liên quan được gửi tới Google để giải. Chrome AI thực hiện suy luận qua mô hình trên máy; lần tải mô hình/bộ dịch cần mạng.
 
 | Quyền trong manifest | Mục đích |
 | --- | --- |
-| `storage` | Chỉ dọn key/kho đáp án của bản cũ nếu quyền cho phép |
+| `storage` | Bộ nhớ phiên RAM cho key tạm và dọn key/kho đáp án của bản cũ nếu quyền cho phép |
 | `activeTab`, `scripting` | Kết nối và chèn mã điều khiển/thu thập vào trang phù hợp |
 | `offscreen` | Duy trì tài liệu AI ẩn, không mở tab hoặc cửa sổ AI |
 | `https://*/*`, `http://*/*` | Hỗ trợ các tên miền Canvas, trang SCORM và gọi Gemini API |
