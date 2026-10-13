@@ -302,7 +302,7 @@
       throwIfCancelled(signal);
       if (Date.now() >= deadline) throw new Error("Đã chờ Gemini quá lâu. Vui lòng kiểm tra hạn mức trong Google AI Studio.");
       const response = await sendBackground("SOLVE_QUESTIONS", {
-        apiKey: config.apiKey, model: config.aiModel, attempt: failures,
+        apiKey: config.apiKey, engine: config.aiEngine, model: config.aiModel, requestId: config.requestId, attempt: failures,
         questions: questions.map(serializeQuestion)
       });
       throwIfCancelled(signal);
@@ -397,6 +397,7 @@
     const explanation = document.createElement("p");
     explanation.textContent = answer.explanation;
     card.append(title, questionEl, chosen, explanation);
+    globalThis.SuiteSources?.append(card,answer);
     panel.appendChild(card);
   }
 
@@ -491,7 +492,12 @@
 
       if (pending.length) {
         throwIfCancelled(controller.signal);
-        const groups = groupQuestions(pending);
+        const web=['groq_api','cloudflare_api','openrouter_api','gemini_search'].includes(config.aiEngine);
+        const groups=web ? pending.map(q=>[q]) : groupQuestions(pending);
+        if(web) {
+          config.requestId=Date.now()+':'+(++localRequestSequence);
+          controller.signal.addEventListener('abort',()=>{void sendBackground('CANCEL_CLOUD_API',{requestId:config.requestId}).catch(()=>{});},{once:true});
+        }
         for (let index = 0; index < groups.length; index++) {
           throwIfCancelled(controller.signal);
           updateStatus("⏳ Đang giải nhóm " + (index + 1) + "/" + groups.length +

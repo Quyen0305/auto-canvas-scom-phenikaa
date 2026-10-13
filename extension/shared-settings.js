@@ -1,40 +1,39 @@
-// Credentials and AI selection last only for the current browser session.
+// Provider credentials last only for the current browser session.
 globalThis.SuiteSettings = (() => {
-  let queue = Promise.resolve(), credential;
-  const session = chrome.storage?.session, SESSION_KEY = 'suite:sessionCredential';
-  const storage = globalThis.SuiteStorage || chrome.storage;
-  function serial(work) { const result = queue.then(work); queue = result.catch(() => {}); return result; }
-  async function readCredential() {
-    if (credential !== undefined) return credential;
-    try { credential = (await session?.get(SESSION_KEY))?.[SESSION_KEY] || null; }
-    catch { credential = null; }
+  let queue=Promise.resolve(),credential;
+  const session=chrome.storage?.session,SESSION_KEY='suite:sessionCredential';
+  const storage=globalThis.SuiteStorage || chrome.storage;
+  function serial(work){const result=queue.then(work);queue=result.catch(()=>{});return result;}
+  async function readCredential(){
+    if(credential!==undefined)return credential;
+    try{credential=(await session?.get(SESSION_KEY))?.[SESSION_KEY] || null;}catch{credential=null;}
+    // Retain a manually entered 2.3.1 key only in session RAM during migration.
+    if(credential?.key)credential={engine:credential.engine,model:credential.model,providers:{gemini_api:{key:credential.key}}};
     return credential;
   }
-  async function writeCredential(entry) {
-    credential = entry;
-    try { await session?.set({[SESSION_KEY]: entry}); }
-    catch { /* Missing or restricted session API: retain worker RAM only. */ }
+  async function writeCredential(entry){credential=entry;try{await session?.set({[SESSION_KEY]:entry});}catch{/* Missing/restricted session API: worker RAM only. */}}
+  async function credentials(ai){
+    const entry=await readCredential(),profile=entry?.providers?.[SuiteCloud.credentialId(ai.engine)] || {};
+    return {...ai,apiKey:profile.key || '',accountId:profile.accountId || '',searchKey:entry?.searchKey || ''};
   }
-  async function update(patch = {}) {
-    const data = await storage.local.get(['suite:ai', 'config']);
-    const entry = await readCredential();
-    const source = data['suite:ai'] || {engine: entry?.engine || 'gemini_api', model: entry?.model || 'gemini-3.8-flash'};
-    const ai = {engine: patch.engine ?? source.engine, model: patch.model ?? source.model};
-    if (!['chrome_ai', 'gemini_api'].includes(ai.engine) || !/^gemini-[a-zA-Z0-9.-]+$/.test(ai.model)) throw Error('Mô hình AI không hợp lệ.');
-    const entered = typeof patch.apiKey === 'string' ? patch.apiKey.trim() : '';
-    if (entered && /\s/.test(entered)) throw Error('API key chứa khoảng trắng. Hãy kiểm tra lại.');
-    if (entered) await writeCredential({key: entered, ...ai});
-    else if (entry && (patch.model !== undefined || patch.engine !== undefined)) await writeCredential({...entry, ...ai});
-    await storage.local.set({
-      'suite:ai': ai,
-      config: {...data.config, provider: ai.engine === 'chrome_ai' ? 'builtin' : 'gemini', model: ai.model, backgroundPlayback: true},
-      'canvas:aiEngine': ai.engine, 'canvas:aiModel': ai.model,
-      'canvas:autoClickAnswer': true, 'canvas:autoNextQuestion': true, 'canvas:answerReviewVersion': 2
-    });
-    return {...ai, keySaved: !!(await readCredential())?.key};
+  async function update(patch={}){
+    const data=await storage.local.get(['suite:ai','config']),entry=await readCredential();
+    const source=data['suite:ai'] || {engine:entry?.engine || 'gemini_api',model:entry?.model || 'gemini-3.8-flash'};
+    const ai={engine:patch.engine ?? source.engine,model:patch.model ?? source.model};
+    if(!SuiteCloud.valid(ai))throw Error('Mô hình AI không hợp lệ.');
+    const next={...(entry || {}),...ai,providers:{...entry?.providers}};
+    const id=SuiteCloud.credentialId(ai.engine),profile={...next.providers[id]};
+    for(const field of ['apiKey','searchKey','accountId']){
+      if(typeof patch[field]!=='string'||!patch[field].trim())continue;
+      const entered=patch[field].trim();if(/\s/.test(entered))throw Error(field==='accountId'?'Account ID chứa khoảng trắng.':'API key chứa khoảng trắng. Hãy kiểm tra lại.');
+      if(field==='searchKey')next.searchKey=entered;else profile[field==='apiKey'?'key':'accountId']=entered;
+    }
+    next.providers[id]=profile;await writeCredential(next);
+    await storage.local.set({'suite:ai':ai,config:{...data.config,provider:SuiteCloud.provider(ai.engine),model:ai.model,backgroundPlayback:true},
+      'canvas:aiEngine':ai.engine,'canvas:aiModel':ai.model,'canvas:autoClickAnswer':true,'canvas:autoNextQuestion':true,'canvas:answerReviewVersion':2});
+    const stored=await credentials(ai);
+    return {...ai,keySaved:!!stored.apiKey,searchKeySaved:!!stored.searchKey,accountId:stored.accountId};
   }
-  return {
-    ensure: () => serial(() => update()), save: patch => serial(() => update(patch)),
-    keyForTab: () => serial(async () => (await readCredential())?.key || '')
-  };
+  return {ensure:()=>serial(()=>update()),save:patch=>serial(()=>update(patch)),
+    credentialsFor:ai=>serial(()=>credentials(ai)),keyForTab:(_id,ai)=>serial(async()=>{const selected=ai || (await storage.local.get('suite:ai'))['suite:ai'] || await update();return (await credentials(selected)).apiKey;})};
 })();

@@ -5,6 +5,12 @@
 <main>
 <label for="aiModel">Mô hình AI <span>Dùng chung cho Canvas và SCORM</span></label>
 <select id="aiModel" disabled>
+  <optgroup label="AI + tìm kiếm web">
+    <option value="groq_api|openai/gpt-oss-120b">Groq · GPT-OSS 120B + Tavily</option>
+    <option value="cloudflare_api|@cf/openai/gpt-oss-120b">Cloudflare · GPT-OSS 120B + Tavily</option>
+    <option value="openrouter_api|openrouter/free">OpenRouter · Mô hình miễn phí + Tavily</option>
+    <option value="gemini_search|gemini-2.5-flash">Gemini 2.5 Flash + Google Search</option>
+  </optgroup>
   <optgroup label="Gemini API">
     <option value="gemini-3.8-flash" selected>Gemini 3.8 Flash</option>
     <option value="gemini-3.7-flash">Gemini 3.7 Flash</option>
@@ -26,12 +32,15 @@
   </optgroup>
   <optgroup label="AI trên máy"><option value="chrome_ai">Chrome AI · Gemini Nano trên máy</option></optgroup>
 </select>
-<div id="keySection"><label for="apiKey">Gemini API key</label><input id="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="Nhập API key cho phiên này" disabled></div>
+<div id="keySection"><label id="apiKeyLabel" for="apiKey">Gemini API key</label><input id="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="Nhập API key cho phiên này" disabled></div>
+<div id="searchKeySection" hidden><label for="searchKey">Tavily API key <span>Dùng chung cho các phương án ghép Tavily</span></label><input id="searchKey" type="password" autocomplete="off" spellcheck="false" placeholder="Nhập key Tavily cho phiên này" disabled></div>
+<div id="accountSection" hidden><label for="accountId">Cloudflare Account ID <span>32 ký tự · Token cần quyền Workers AI: Read</span></label><input id="accountId" type="text" autocomplete="off" spellcheck="false" placeholder="Account ID của Cloudflare" disabled></div>
+<p id="providerHelp" class="subtle" hidden></p>
 <p id="aiStatus" class="subtle" role="status" aria-live="polite">Đang đọc cấu hình…</p>
 <div class="tabs" role="tablist" aria-label="Công cụ"><button id="tab-scorm" role="tab" aria-selected="true" aria-controls="panel-scorm" data-mode="scorm">SCORM</button><button id="tab-canvas" role="tab" aria-selected="false" aria-controls="panel-canvas" data-mode="canvas">Canvas</button></div>
 <section id="panel-scorm" role="tabpanel" aria-labelledby="tab-scorm"><div class="actions"><button id="start" class="primary" disabled>Bắt đầu</button><button id="stop" disabled>Dừng</button></div></section>
 <section id="panel-canvas" role="tabpanel" aria-labelledby="tab-canvas" hidden><div class="actions"><button id="canvas-auto" class="primary" disabled>Tự động làm</button><button id="canvas-target" class="primary" disabled>Làm đến 10 điểm</button></div><button id="canvas-stop" class="wide" disabled>Dừng</button></section>
 <div id="status" class="status" role="status" aria-live="polite">Sẵn sàng.</div>
-</main><footer>Không lưu API key hoặc đáp án</footer>
+</main><footer>Key trong RAM theo phiên Chrome · Không lưu đáp án</footer>
 <script src="core.js"></script><script src="builtin-engine.js"></script><script src="suite.js"></script>
 </body></html>

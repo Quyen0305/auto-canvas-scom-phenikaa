@@ -1,6 +1,6 @@
 # Auto Canvas SCOM Phenikaa
 
-Tiện ích Chrome hỗ trợ làm bài trắc nghiệm trên Canvas, xem video bài giảng và làm bài tập theo dõi bài học SCORM. Phiên bản hiện tại: **2.3.2**.
+Tiện ích Chrome hỗ trợ làm bài trắc nghiệm trên Canvas, xem video bài giảng và làm bài tập theo dõi bài học SCORM. Phiên bản hiện tại: **2.4.0**.
 
 Tên repository giữ chữ `scom`; tên kỹ thuật của định dạng bài học là **SCORM**. Khi cài vào Chrome, tiện ích hiển thị tên **Trợ lý học tập · Canvas & SCORM**.
 
@@ -41,6 +41,10 @@ Bấm biểu tượng tiện ích để mở cửa sổ điều khiển, gọi l
 | Lựa chọn | Cách xử lý câu hỏi | Cần chuẩn bị |
 | --- | --- | --- |
 | Gemini API | Gửi nội dung câu hỏi và lựa chọn tới Gemini API của Google | API key hợp lệ, mạng và hạn mức cho model đã chọn |
+| Groq · GPT-OSS 120B + Tavily | Tìm kiếm web qua Tavily, đưa nội dung nguồn cho Groq suy luận | Key Groq và key Tavily |
+| Cloudflare · GPT-OSS 120B + Tavily | Tìm kiếm Tavily rồi gọi Workers AI | Token Cloudflare có quyền Workers AI: Read, Account ID 32 ký tự và key Tavily |
+| OpenRouter · Mô hình miễn phí + Tavily | Dùng `openrouter/free` chọn một model miễn phí hỗ trợ JSON; Tavily tìm kiếm riêng | Key OpenRouter và key Tavily |
+| Gemini 2.5 Flash + Google Search | Gọi công cụ Google Search tích hợp trong Gemini | Một key Gemini; project có quyền/model/hạn mức phù hợp |
 | Chrome AI · Gemini Nano trên máy | Chạy mô hình qua API AI tích hợp của Chrome | Trình duyệt/phần cứng hỗ trợ; tải mô hình và bộ dịch cần thiết |
 
 ### Dùng Gemini API
@@ -56,6 +60,27 @@ Key chỉ dùng tạm trong phiên Chrome, không ghi xuống đĩa. Ô nhập �
 Chrome hỗ trợ `storage.session` giữ key và lựa chọn AI trong RAM ngay cả khi service worker tự khởi động lại. Không gọi `setAccessLevel` để dùng vùng nhớ này. Nếu máy thiếu/chặn API bộ nhớ phiên, tiện ích dùng RAM của worker; ở chế độ dự phòng đó, worker khởi động lại sẽ mất key và cần nhập lại. Key không được hiển thị lại trên popup hoặc ghi vào `storage.local`.
 
 Chọn model mà project Google của bạn được phép sử dụng. Danh sách trong tiện ích là danh sách tĩnh; thông báo của API quyết định model và hạn mức có thực sự khả dụng hay không.
+
+### AI kết hợp tìm kiếm web (2.4.0)
+
+Chọn một trong bốn phương án có tìm kiếm trong popup. Giao diện tự hiện đúng ô nhập:
+
+- **Groq + Tavily:** hai key. Lấy key tại [Groq Console](https://console.groq.com/keys) và [Tavily](https://app.tavily.com).
+- **Cloudflare + Tavily:** token Cloudflare, Account ID và key Tavily. Tạo token có quyền **Workers AI: Read**, giới hạn đúng account; Account ID không phải API key. Xem [hướng dẫn Workers AI REST API](https://developers.cloudflare.com/workers-ai/get-started/rest-api/).
+- **OpenRouter + Tavily:** hai key, lấy key AI tại [OpenRouter](https://openrouter.ai/keys). Tiện ích chọn `openrouter/free`, không dùng model có phí, plugin tìm kiếm có phí hay `:online`. Router có thể thay đổi model thực tế theo danh sách và khả năng hỗ trợ JSON.
+- **Gemini + Google Search:** chỉ một key Gemini; lựa chọn riêng dùng Gemini 2.5 Flash. Google tự quyết định có thực hiện tìm kiếm cho câu hỏi hay không. Nếu API không trả nguồn, giao diện ghi rõ chưa xác nhận bằng nguồn ngoài.
+
+Key AI được giữ riêng theo nhà cung cấp trong RAM của phiên Chrome; Gemini thường và Gemini + Google Search dùng chung key Google. Key Tavily dùng chung cho ba phương án ghép. Đóng popup, Dừng hoặc đổi phương án không xóa các key đã nhập. Không hiện lại key thật; đổi phương án làm trống các ô nhập để tránh gửi nhầm key. Tất cả vẫn mất khi thoát hẳn Chrome hoặc tải lại tiện ích; vùng nhớ phiên bị chặn thì dùng RAM worker như giải thích ở trên.
+
+Các phương án web xử lý **từng câu riêng**. Với Tavily, mỗi câu gửi một lượt tìm kiếm `fast`, lấy tối đa ba nguồn với đoạn trích có giới hạn; câu hỏi đầy đủ và đáp án vẫn gửi nguyên vẹn cho AI. Chuỗi truy vấn tối đa 400 ký tự Unicode. Ngữ cảnh câu hỏi có thể được gửi cả nhà cung cấp tìm kiếm và AI. Cần mạng; không tải model hay cài phần mềm tìm kiếm về máy.
+
+Kết quả hiển thị liên kết **Nguồn tham khảo** trên Canvas và bảng nguồn nhỏ trên SCORM. Với Google Search, gợi ý tìm kiếm do Google trả về được hiển thị trong iframe cách ly không cho chạy script. Các liên kết/nguồn này chỉ ở trang đang mở, không ghi vào kho đáp án hay đĩa.
+
+**Không tự thử lại cho bốn phương án web mới:** nếu lỗi mạng, timeout, key, quyền, model hay quota, tiện ích báo đúng bên gặp lỗi và dừng. Không tự đổi nhà cung cấp hoặc bỏ tìm kiếm. Tavily lỗi/không trả nguồn thì chưa gọi AI. Dừng hủy yêu cầu đang chạy và ngăn yêu cầu đang đọc key tiếp tục gửi API. Gemini thường giữ chính sách thử lại đã có trong bản 2.3.2.
+
+Miễn phí phụ thuộc tài khoản và hạn mức của nhà cung cấp, không phải miễn phí vô hạn. Đối chiếu [Groq](https://console.groq.com/docs/rate-limits), [Cloudflare](https://developers.cloudflare.com/workers-ai/platform/pricing/), [OpenRouter Free Router](https://openrouter.ai/docs/guides/routing/routers/free-router), [Tavily](https://docs.tavily.com/documentation/api-credits) và [Google](https://ai.google.dev/gemini-api/docs/pricing). Không cần bật gói trả phí để dùng các lựa chọn này trong hạn mức cho phép. Nếu tài khoản của bạn đã bật tính phí tự động, chính sách tính phí thuộc tài khoản đó.
+
+OpenRouter BYOK có thể quản lý key nhà cung cấp tại máy chủ OpenRouter, nhưng đây là cơ chế khác với key RAM trong tiện ích. Phiên bản này không gửi key Groq/Gemini/Cloudflare sang OpenRouter để tạo BYOK và không đăng ký dịch vụ tính phí thay bạn.
 
 ### Dùng Chrome AI
 

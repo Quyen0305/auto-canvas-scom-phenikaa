@@ -93,3 +93,23 @@ test('Stop before SCORM playback setup completes prevents a late popup AI downlo
   release({playbackOnly:true,needsPreparation:true});await flush();
   assert.equal(h.preparations,0);assert.ok(h.messages.some(m=>m.type==='STOP'));h.close();
 });
+
+test('selecting a paired provider clears old key drafts and shows its required fields',async()=>{
+  const h=await setup();try {
+    h.el('aiModel').value='groq_api|openai/gpt-oss-120b';h.el('aiModel').dispatchEvent(new h.w.Event('change'));await flush();
+    assert.equal(h.ai.engine,'groq_api');assert.equal(h.el('apiKey').value,'');assert.equal(h.el('searchKeySection').hidden,false);
+    h.el('apiKey').value='GROQ_KEY';h.el('searchKey').value='TAVILY_KEY';h.el('searchKey').dispatchEvent(new h.w.Event('input'));await flush();
+    h.el('start').click();await flush();const start=h.messages.find(m=>m.action==='SUITE_START');
+    assert.equal(start.data.engine,'groq_api');assert.equal(start.data.model,'openai/gpt-oss-120b');assert.equal(start.data.searchKey,'TAVILY_KEY');
+    h.w.dispatchEvent(new h.w.Event('pagehide'));assert.equal(h.el('searchKey').value,'');
+  }finally{h.close();}
+});
+
+test('Google Search needs only Gemini key and Cloudflare additionally needs an Account ID',async()=>{
+  const h=await setup();try {
+    h.el('aiModel').value='gemini_search|gemini-2.5-flash';h.el('aiModel').dispatchEvent(new h.w.Event('change'));await flush();
+    assert.equal(h.el('searchKeySection').hidden,true);
+    h.el('aiModel').value='cloudflare_api|@cf/openai/gpt-oss-120b';h.el('aiModel').dispatchEvent(new h.w.Event('change'));await flush();
+    assert.equal(h.el('accountSection').hidden,false);assert.equal(h.el('searchKeySection').hidden,false);
+  }finally{h.close();}
+});

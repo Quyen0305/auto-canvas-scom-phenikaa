@@ -179,3 +179,64 @@ test('the browser-session key is ready in a new tab after the original tab close
     {url:'https://canvas.test/courses/1/quizzes/2/take',tab:{id:9}});
   assert.equal(settings.data.apiKey,'TEST_KEY');assert.equal(h.nativeWrites.length,0);
 });
+
+test('provider credentials stay separate across selection changes and worker restarts',async()=>{
+  const volatileSession={},h=setup({volatileSession});
+  await h.request({action:'SUITE_SETTINGS',data:{apiKey:'GEMINI_PRIVATE',engine:'gemini_api',model:'gemini-2.5-flash'}});
+  const groq=await h.request({action:'SUITE_SETTINGS',data:{apiKey:'GROQ_PRIVATE',searchKey:'TAVILY_PRIVATE',engine:'groq_api',model:'openai/gpt-oss-120b'}});
+  assert.equal(groq.success,true);assert.equal(groq.data.searchKeySaved,true);assert.equal(JSON.stringify(groq.data).includes('PRIVATE'),false);
+  const cloud=await h.request({action:'SUITE_SETTINGS',data:{engine:'cloudflare_api',model:'@cf/openai/gpt-oss-120b'}});
+  assert.equal(cloud.data.keySaved,false);assert.equal(cloud.data.searchKeySaved,true);
+  const restarted=setup({volatileSession});
+  const back=await restarted.request({action:'SUITE_SETTINGS',data:{engine:'gemini_api',model:'gemini-2.5-flash'}});assert.equal(back.data.keySaved,true);
+  const creds=await restarted.context.SuiteSettings.credentialsFor({engine:'gemini_api',model:'gemini-2.5-flash'});assert.equal(creds.apiKey,'GEMINI_PRIVATE');
+  assert.equal(h.nativeWrites.length,0);assert.equal((await setup().request({action:'SUITE_SETTINGS'})).data.keySaved,false);
+});
+
+test('all four web providers solve real Canvas and SCORM message flows without disk writes',async()=>{
+  for(const [engine,model] of [['groq_api','openai/gpt-oss-120b'],['cloudflare_api','@cf/openai/gpt-oss-120b'],['openrouter_api','openrouter/free'],['gemini_search','gemini-2.5-flash']]) {
+    const calls=[];
+    const h=setup({fetcher:async(url,options)=>{
+      calls.push({url,body:JSON.parse(options.body),headers:options.headers});
+      const isCanvas=options.body.includes('selected_indices');
+      const answer=isCanvas?{answers:[{id:'q1',answerable:true,selected_indices:[1],answer_texts:['2'],explanation:'Một cộng một bằng hai.'}]}:{answers:[2],reason:'Một cộng một bằng hai.'};
+      const text=JSON.stringify(answer);
+      const body=url.includes('tavily')?{results:[{title:'Toán',url:'https://example.org/math',content:'Một cộng một bằng hai.'}]}:
+        engine==='gemini_search'?{candidates:[{content:{parts:[{text}]},groundingMetadata:{groundingChunks:[{web:{uri:'https://example.org/math',title:'Toán'}}]}}]}:
+        engine==='cloudflare_api'?{output:[{type:'message',content:[{type:'output_text',text}]}]}:{choices:[{message:{content:text}}]};
+      return {ok:true,status:200,text:async()=>JSON.stringify(body)};
+    }});
+    const saved=await h.request({action:'SUITE_SETTINGS',data:{engine,model,apiKey:'PROVIDER_PRIVATE',searchKey:'TAVILY_PRIVATE',accountId:'a'.repeat(32)}});
+    assert.equal(saved.success,true,engine);
+    const start=await h.request({action:'SUITE_START',tabId:7,command:'scorm',data:{engine,model}});assert.equal(start.success,true,engine);
+    const result=await h.request({type:'SOLVE',session:start.data.session,question:{text:'1 + 1?',options:['1','2'],multiple:false,history:[]}},
+      {id:'suite',url:'https://scorm.eduone.io.vn/en/learn/test',tab:{id:7},frameId:0});
+    assert.deepEqual(Array.from(result.answers),[1]);assert.equal(result.sources[0].url,'https://example.org/math');
+    const canvas=await h.request({action:'SOLVE_QUESTIONS',data:{engine,model,questions:[{id:'q1',questionText:'1 + 1?',options:['1','2']}]}},
+      {url:'https://canvas.test/courses/1/quizzes/2/take',tab:{id:9},frameId:0});
+    assert.equal(canvas.success,true,canvas.error);assert.equal(canvas.data.answers[0].sources.length,1);
+    assert.equal(h.nativeWrites.length,0);assert.equal(JSON.stringify(await h.request({type:'GET_STATUS',tabId:7})).includes('PRIVATE'),false);
+  }
+});
+
+test('Canvas Stop during credential lookup cancels before Tavily or model calls',async()=>{
+  let calls=0;const h=setup({fetcher:async url=>{calls++;return {ok:true,status:200,text:async()=>JSON.stringify(url.includes('tavily')?{results:[{url:'https://example.org/math',content:'Một cộng một bằng hai.'}]}:{choices:[{message:{content:JSON.stringify({answers:[{id:'q1',answerable:true,selected_indices:[1],answer_texts:['2'],explanation:'Một cộng một bằng hai.'}]})}}]})};}});
+  await h.request({action:'SUITE_SETTINGS',data:{engine:'groq_api',model:'openai/gpt-oss-120b',apiKey:'GROQ_KEY',searchKey:'TAVILY_KEY'}});
+  const original=h.context.SuiteSettings.ensure;let release;
+  h.context.SuiteSettings.ensure=()=>new Promise(resolve=>{release=()=>original().then(resolve);});
+  const sender={url:'https://canvas.test/courses/1/quizzes/2/take',tab:{id:9},frameId:0};
+  const pending=h.request({action:'SOLVE_QUESTIONS',data:{engine:'groq_api',model:'openai/gpt-oss-120b',requestId:'cancel-before-key',questions:[{id:'q1',questionText:'1 + 1?',options:['1','2']}]}},sender);
+  await new Promise(resolve=>setImmediate(resolve));assert.ok(release);
+  await h.request({action:'CANCEL_CLOUD_API',data:{requestId:'cancel-before-key'}},sender);release();
+  const result=await pending;assert.equal(result.success,false);assert.equal(calls,0);
+});
+
+test('Stop during provider credential validation cannot revive a worker-owned Start',async()=>{
+  const h=setup();await h.request({action:'SUITE_SETTINGS',data:{engine:'groq_api',model:'openai/gpt-oss-120b',apiKey:'GROQ_KEY',searchKey:'TAVILY_KEY'}});
+  const original=h.context.SuiteSettings.credentialsFor;let first=true,release;
+  h.context.SuiteSettings.credentialsFor=ai=>{if(!first)return original(ai);first=false;return new Promise(resolve=>{release=()=>original(ai).then(resolve);});};
+  const pending=h.request({action:'SUITE_START',tabId:7,command:'scorm',data:{engine:'groq_api',model:'openai/gpt-oss-120b'}});
+  await new Promise(resolve=>setImmediate(resolve));assert.ok(release);
+  await h.request({type:'STOP',tabId:7});release();const result=await pending;
+  assert.equal(result.data.cancelled,true);assert.notEqual((await h.request({type:'GET_STATUS',tabId:7})).run?.running,true);
+});

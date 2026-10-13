@@ -41,7 +41,7 @@ globalThis.CanvasCompat = (() => {
       if (!['executeScript','insertCSS'].includes(key)) return typeof value==='function'?value.bind(target):value;
       return (options,...args)=>{
         const files=options.files?.map(file=>'canvas/'+file);
-        if (key==='executeScript' && files?.includes('canvas/content.js')) { files.unshift('canvas-compat.js');files.push('canvas-controls.js'); }
+        if (key==='executeScript' && files?.includes('canvas/content.js')) { files.unshift('sources.js','canvas-compat.js');files.push('canvas-controls.js'); }
         if (key==='insertCSS' && files?.includes('canvas/styles.css')) files.push('canvas-compact.css');
         return value.call(target,files?{...options,files}:options,...args);
       };

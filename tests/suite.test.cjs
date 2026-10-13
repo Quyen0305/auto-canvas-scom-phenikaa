@@ -75,7 +75,7 @@ test('shared key is RAM only and Canvas cannot read SCORM settings',async()=>{
 test('Canvas reconnect injects only active Canvas assets',async()=>{
   const h=setup(),canvas=vm.runInContext('CanvasCompat.create(false)',h.context);
   await canvas.scripting.executeScript({target:{tabId:9},files:['content.js']});
-  assert.deepEqual([...h.injected[0].files],['canvas-compat.js','canvas/content.js','canvas-controls.js']);
+  assert.deepEqual([...h.injected[0].files],['sources.js','canvas-compat.js','canvas/content.js','canvas-controls.js']);
 });
 test('shared Chrome AI still uses one hidden document for Canvas and SCORM',async()=>{
   const h=setup();await h.request({action:'SUITE_SETTINGS',data:{engine:'chrome_ai',model:'gemini-2.5-flash'}});

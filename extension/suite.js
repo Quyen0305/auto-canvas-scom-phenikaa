@@ -10,7 +10,7 @@
   }
   function lock(){
     if(closed)return;
-    $('aiModel').disabled=$('apiKey').disabled=!loaded||working;
+    $('aiModel').disabled=$('apiKey').disabled=$('searchKey').disabled=$('accountId').disabled=!loaded||working;
     for(const id of ['start','canvas-auto','canvas-target'])$(id).disabled=!loaded||working;
     $('stop').disabled=$('canvas-stop').disabled=!loaded;
   }
@@ -22,8 +22,20 @@
     }
     errorUntil=0;refresh();
   }
+  function selection(){
+    const value=$('aiModel').value;
+    if(value==='chrome_ai')return {engine:'chrome_ai',model:/^gemini-/.test(ai.model)?ai.model:'gemini-3.8-flash'};
+    if(value.includes('|')){const [engine,model]=value.split('|');return {engine,model};}
+    return {engine:'gemini_api',model:value};
+  }
+  function entered(){return Object.fromEntries(['apiKey','searchKey','accountId'].map(id=>[id,$(id).value.trim()]).filter(([,value])=>value));}
+  function clearInputs(){for(const id of ['apiKey','searchKey','accountId'])$(id).value='';}
   function aiUI(){
-    $('keySection').hidden=$('aiModel').value==='chrome_ai';
+    const chosen=selection(),paired=['groq_api','cloudflare_api','openrouter_api'].includes(chosen.engine);
+    $('keySection').hidden=chosen.engine==='chrome_ai';$('searchKeySection').hidden=!paired;$('accountSection').hidden=chosen.engine!=='cloudflare_api';
+    $('apiKeyLabel').textContent=({groq_api:'Groq API key',cloudflare_api:'Cloudflare API token',openrouter_api:'OpenRouter API key'})[chosen.engine] || 'Gemini API key';
+    const help={groq_api:'Cần 2 key: Groq và Tavily. Tìm kiếm nhanh, mỗi câu một lượt.',cloudflare_api:'Cần token Cloudflare, Account ID và key Tavily.',openrouter_api:'Dùng bộ định tuyến mô hình miễn phí của OpenRouter và tìm kiếm Tavily. Cần 2 key.',gemini_search:'Chỉ cần key Gemini. Tìm kiếm Google tích hợp; model có thể không trả nguồn cho mọi câu.'};
+    $('providerHelp').hidden=!help[chosen.engine];$('providerHelp').textContent=help[chosen.engine] || '';
   }
   function prepareAI(){
     if(modelReady)return Promise.resolve();
@@ -47,13 +59,16 @@
   function cancelPreparation(){const old=preparing;preparing=null;old?.engine.destroy();}
   function keyUI(){
     if(closed || preparing)return;
+    $('searchKey').placeholder=ai.searchKeySaved?'Key Tavily trong RAM đã sẵn sàng':'Nhập key Tavily cho phiên này';
+    if(!$('accountId').value && ai.accountId)$('accountId').placeholder='Account ID trong RAM đã sẵn sàng';
     $('apiKey').placeholder=ai.keySaved?'Key tạm đã sẵn sàng · Nhập để thay thế':'Nhập API key cho phiên này';
     $('aiStatus').textContent=ai.engine==='chrome_ai'?'AI trên máy · Không cần API key':ai.keySaved?'Key trong RAM đã sẵn sàng · Giữ đến khi thoát hẳn Chrome.':'Nhập API key · Chỉ giữ tạm trong RAM, không ghi xuống đĩa.';
   }
   async function save(withKey=false){
-    const value=$('aiModel').value,key=$('apiKey').value.trim();
-    ai=await settings({engine:value==='chrome_ai'?'chrome_ai':'gemini_api',model:value==='chrome_ai'?ai.model:value,...(withKey && key?{apiKey:key}:{})});
-    keyUI();
+    const value=$('aiModel').value;
+    const result=await settings({...selection(),...(withKey?entered():{})});
+    if(closed||$('aiModel').value!==value)return;
+    ai=result;keyUI();
   }
   async function canvas(command){
     let url;try{url=new URL(tabUrl);}catch{}
@@ -63,7 +78,7 @@
     try{response=await chrome.tabs.sendMessage(tabId,message);}catch(error){
       if(['status','stop'].includes(command))throw Error('Tải lại trang Canvas để kết nối tiện ích.');
       await chrome.scripting.insertCSS({target:{tabId},files:['canvas/styles.css','canvas-compact.css']});
-      await chrome.scripting.executeScript({target:{tabId},files:['canvas-compat.js','canvas/content.js','canvas-controls.js']});
+      await chrome.scripting.executeScript({target:{tabId},files:['sources.js','canvas-compat.js','canvas/content.js','canvas-controls.js']});
       response=await chrome.tabs.sendMessage(tabId,message);
     }
     if(response?.error)throw Error(response.error);
@@ -92,8 +107,8 @@
         const key=$('apiKey').value.trim();
         if(!key && !ai.keySaved)throw Error('Nhập API key cho phiên này. Key chỉ giữ tạm trong RAM.');
         const pending=chrome.runtime.sendMessage({action:'SUITE_START',tabId,command:command==='START'?'scorm':command,
-          data:{model:$('aiModel').value,...(key?{apiKey:key}:{})}});
-        $('apiKey').value='';
+          data:{...selection(),...entered()}});
+        clearInputs();
         const response=await pending;
         if(token!==epoch || closed)return;
         if(!response?.success)throw Error(response?.error || 'Không bắt đầu được phiên.');
@@ -120,17 +135,17 @@
       if(canvasMode)await canvas('stop');
       else {const result=await chrome.runtime.sendMessage({type:'STOP',tabId});if(result?.error)throw Error(result.error);}
       await chrome.runtime.sendMessage({action:'SUITE_CLEAR_KEY',data:{tabId}});
-      $('apiKey').value='';ai=await settings();keyUI();
+      clearInputs();ai=await settings();keyUI();
       notice('Đã dừng. Key vẫn giữ trong RAM đến khi thoát hẳn Chrome.');errorUntil=Date.now()+1500;
     }catch(error){notice(error.message,true);}
   }
   $('aiModel').addEventListener('change',()=>{
-    aiUI();modelReady=false;
+    clearInputs();ai={...ai,keySaved:false,searchKeySaved:false,accountId:''};aiUI();modelReady=false;
     if($('aiModel').value==='chrome_ai')prepareAI();else cancelPreparation();
     save().catch(error=>notice(error.message,true));
   });
-  $('apiKey').addEventListener('input',()=>{
-    if(loaded && $('apiKey').value.trim())save(true).catch(error=>notice(error.message,true));
+  for(const id of ['apiKey','searchKey','accountId'])$(id).addEventListener('input',()=>{
+    if(loaded && $(id).value.trim())save(true).catch(error=>notice(error.message,true));
   });
   $('start').addEventListener('click',()=>start('START'));
   $('canvas-auto').addEventListener('click',()=>start('auto'));
@@ -143,14 +158,15 @@
       event.preventDefault();select(mode==='canvas'?'scorm':'canvas');$('tab-'+mode).focus();
     });
   }
-  window.addEventListener('pagehide',()=>{closed=true;epoch++;$('apiKey').value='';cancelPreparation();});
+  window.addEventListener('pagehide',()=>{closed=true;epoch++;clearInputs();cancelPreparation();});
   (async()=>{
     const tabs=await chrome.tabs.query({active:true,currentWindow:true});
     if(closed)return;
     tabId=tabs[0]?.id;tabUrl=tabs[0]?.url || '';
     const config=await settings();if(closed)return;ai=config;
-    if(![...$('aiModel').options].some(option=>option.value===ai.model))$('aiModel').add(new Option(ai.model,ai.model));
-    $('aiModel').value=ai.engine==='chrome_ai'?'chrome_ai':ai.model;aiUI();
+    const value=ai.engine==='chrome_ai'?'chrome_ai':ai.engine==='gemini_api'?ai.model:ai.engine+'|'+ai.model;
+    if(![...$('aiModel').options].some(option=>option.value===value))$('aiModel').add(new Option(ai.model,value));
+    $('aiModel').value=value;aiUI();
     keyUI();
     let url;try{url=new URL(tabUrl);}catch{}
     const isCanvas=url && url.hostname!=='scorm.eduone.io.vn' && (/\/quizzes\//.test(url.pathname)||url.protocol==='file:');

@@ -1,5 +1,5 @@
 // One worker, two independent modules. Canvas uses action; SCORM uses type.
-importScripts('runtime-storage.js','shared-settings.js','background.js','canvas-compat.js','canvas/chrome-ai.js');
+importScripts('runtime-storage.js','cloud-providers.js','shared-settings.js','background.js','canvas-compat.js','canvas/chrome-ai.js');
 const SuiteCanvasAI = {solve: requestCanvasAI};
 importScripts('canvas/background.js');
 
@@ -19,9 +19,11 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
       const scorm=url.hostname==='scorm.eduone.io.vn';
       if(message.command==='scorm'?!scorm:scorm || !(url.protocol==='file:' || /\/quizzes\//.test(url.pathname)))throw Error('Mở đúng trang học trước khi bắt đầu.');
       if(!current())return {cancelled:true};
-      const ai=await SuiteSettings.save({...message.data,engine:'gemini_api',tabId:id});
+      const ai=await SuiteSettings.save({...message.data,engine:message.data?.engine || 'gemini_api',tabId:id});
       if(!current())return {cancelled:true};
       if(!ai.keySaved)throw Error('Nhập API key cho phiên này. Key chỉ giữ tạm trong RAM.');
+      SuiteCloud.check(await SuiteSettings.credentialsFor(ai));
+      if(!current())return {cancelled:true};
       if(message.command==='scorm')return handle({type:'START',tabId:id,ai},sender);
       const control={action:'SUITE_CANVAS_CONTROL',command:message.command};
       let response;
@@ -29,7 +31,7 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
       catch {
         await chrome.scripting.insertCSS({target:{tabId:id},files:['canvas/styles.css','canvas-compact.css']});
         if(!current())return {cancelled:true};
-        await chrome.scripting.executeScript({target:{tabId:id},files:['canvas-compat.js','canvas/content.js','canvas-controls.js']});
+        await chrome.scripting.executeScript({target:{tabId:id},files:['sources.js','canvas-compat.js','canvas/content.js','canvas-controls.js']});
         if(!current())return {cancelled:true};
         response=await chrome.tabs.sendMessage(id,control);
       }
@@ -75,7 +77,7 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
     const result=await CanvasCompat.create(false).storage.local[method](value);
     if(method==='get' && keys.includes('aiModel'))result.aiModel=ai.model;
     if(method==='get' && keys.includes('aiEngine'))result.aiEngine=ai.engine;
-    if(method==='get' && keys.includes('apiKey'))result.apiKey=await SuiteSettings.keyForTab(sender.tab.id);
+    if(method==='get' && keys.includes('apiKey'))result.apiKey=ai.engine==='gemini_api' ? await SuiteSettings.keyForTab(sender.tab.id) : '';
     return result;
   })().then(data=>reply({success:true,data}),error=>reply({success:false,error:error.message}));
   return true;

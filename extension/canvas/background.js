@@ -9,6 +9,7 @@ let requestInFlight = false;
 const MAX_BATCH_QUESTIONS = 10;
 const MAX_BATCH_CHARS = 24000;
 const chromeAiJobs = new Map();
+const cloudJobs = new Map();
 let autoStateWrites = Promise.resolve();
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -19,6 +20,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     CLEAR_ANSWER_CACHE: handleClearAnswerCache,
     SOLVE_CHROME_AI: handleChromeAiQuestion,
     CANCEL_CHROME_AI: handleCancelChromeAi,
+    CANCEL_CLOUD_API: async (data,sender) => {cloudJobs.get(chromeAiJobKey(data,sender))?.abort();return {cancelled:true};},
     GET_AUTO_STATE: handleGetAutoState,
     SET_AUTO_STATE: handleSetAutoState,
     RECORD_QUIZ_RESULTS: handleRecordQuizResults,
@@ -383,8 +385,22 @@ function batchAnswers(parsed, questions) {
   return answers;
 }
 
-async function handleSolveQuestions(data, sender) {
-  if (globalThis.SuiteSettings) data = {...data, apiKey: await SuiteSettings.keyForTab(sender.tab?.id)};
+async function handleSolveQuestions(data,sender) {
+  // Own the cancellable job before any asynchronous settings/credential read.
+  if(!globalThis.SuiteCloud || ['gemini_api','chrome_ai'].includes(data.engine))return solveQuestions(data,sender);
+  const key=chromeAiJobKey(data,sender),controller=new AbortController();
+  if(cloudJobs.has(key))throw apiError('API đang xử lý câu này.','BUSY');
+  cloudJobs.set(key,controller);const timeout=setTimeout(()=>controller.abort(),20000);
+  try{return await solveQuestions(data,sender,controller);}
+  finally{clearTimeout(timeout);if(cloudJobs.get(key)===controller)cloudJobs.delete(key);}
+}
+async function solveQuestions(data, sender,controller) {
+  if (globalThis.SuiteSettings) {
+    const selected=await SuiteSettings.ensure();
+    data={...data,engine:data.engine || selected.engine,model:data.model || selected.model};
+    data={...data,...await SuiteSettings.credentialsFor({engine:data.engine,model:data.model})};
+  }
+  controller?.signal.throwIfAborted();
   validateQuestions(data.questions);
   const questions = data.questions;
   if (questions.length > MAX_BATCH_QUESTIONS ||
@@ -405,14 +421,15 @@ Nếu không xác định được, để hai mảng rỗng và giải thích ng
 Phải trả lời đầy đủ mọi id, mỗi id đúng một lần, không thêm id khác.
 Dữ liệu câu hỏi:
 ${JSON.stringify(questions)}`;
-  const json = await generateContent(data, {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: {
-      temperature: 0.1, topP: 0.95, responseMimeType: "application/json",
-      responseJsonSchema: batchResponseSchema(questions)
-    }
-  });
-  const parsed = parseGeneratedJson(json);
+  let parsed,web;
+  if(globalThis.SuiteCloud && ['groq_api','cloudflare_api','openrouter_api','gemini_search'].includes(data.engine)) {
+    if(questions.length!==1)throw apiError('Phương án có tìm kiếm web xử lý từng câu riêng.','INVALID_INPUT');
+    web=await SuiteCloud.solve(data,{prompt,query:questions[0].questionText,schema:batchResponseSchema(questions),signal:controller.signal});
+    controller.signal.throwIfAborted();parsed=web.data;
+  }else {
+    const json=await generateContent(data,{contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.1,topP:0.95,responseMimeType:'application/json',responseJsonSchema:batchResponseSchema(questions)}});
+    parsed=parseGeneratedJson(json);
+  }
   const expected = new Map(questions.map(q => [q.id, q]));
   const generated = new Map();
   for (const answer of batchAnswers(parsed, questions)) {
@@ -424,7 +441,7 @@ ${JSON.stringify(questions)}`;
     generated.set(answer.id, answerFields(answer));
   }
   return {
-    answers: questions.map(q => ({...generated.get(q.id), id: q.id, source: data.model || DEFAULT_MODEL, cached: false})),
+    answers: questions.map(q => ({...generated.get(q.id), id: q.id, source: data.model || DEFAULT_MODEL, cached: false,...(web?{sources:web.sources,searchSuggestions:web.searchSuggestions,warning:web.warning}:{})})),
     cachedCount: 0
   };
 }

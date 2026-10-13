@@ -73,7 +73,7 @@
     const out = []; let node;
     while ((node = walker.nextNode())) {
       const p = node.parentElement;
-      if (node.textContent.trim() && p && !p.closest('script, style, nav, [role="navigation"], #menu, .sidebar') && visible(p)) out.push(node.textContent.trim());
+      if (node.textContent.trim() && p && !p.closest('script, style, nav, [role="navigation"], #menu, .sidebar, #suite-ai-sources') && visible(p)) out.push(node.textContent.trim());
     }
     return out.join(' ').replace(/\s+/g, ' ').slice(0, 20000);
   }
@@ -290,12 +290,14 @@
     sendMessage({type: 'PAUSE', session, text: reason}).catch(() => {});
   }
   function stopLocal(keepPlayback = false) {
+    globalThis.SuiteSources?.clear();
     S.running = false; S.playbackOnly = false; S.generation++; clearInterval(S.timer); S.timer = null;
     S.reviewReturn = null;
     S.videoReturn = null;
     if (!keepPlayback) playback(false);
   }
   function resetSlide(key) {
+    globalThis.SuiteSources?.clear();
     S.key = key; S.stable = ''; S.stableAt = Date.now(); S.endAt = 0; S.action = null;
     if (!['submitted', 'result', 'retry'].includes(S.quiz?.phase)) S.quiz = null;
   }
@@ -487,6 +489,7 @@
             const want = chosen.includes(index);
             if ((fresh.q.multiple && selected(el) !== want) || (!fresh.q.multiple && want && !selected(el))) click(el);
           });
+          globalThis.SuiteSources?.show(response);
           quiz.answers = chosen; quiz.reason = response.reason; quiz.phase = 'selected'; quiz.at = Date.now();
           setStatus(`${remaining !== null ? 'Tự chọn đáp án còn lại' : C.providerName(S.config) + ' chọn'} ${chosen.map(x => x + 1).join(', ')}. ${response.reason || ''}`); return;
         }

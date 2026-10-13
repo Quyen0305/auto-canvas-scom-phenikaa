@@ -20,7 +20,7 @@
           !h || !Array.isArray(h.answers) || h.answers.some(n => !Number.isInteger(n) || n < 1 || n > q.options.length) ||
           typeof h.feedback !== 'string' || h.feedback.length > 4000)) throw new Error('Không đọc được đầy đủ câu hỏi và đáp án.');
   }
-  function providerName(config) { return config?.provider === 'builtin' ? 'Chrome AI' : 'Gemini'; }
+  function providerName(config) { return ({builtin:'Chrome AI',groq:'Groq + Tavily',cloudflare:'Cloudflare + Tavily',openrouter:'OpenRouter + Tavily',gemini_search:'Gemini + Google Search'})[config?.provider] || 'Gemini'; }
   function ratio(now, min, max) {
     if ([now, min, max].some(x => x == null || x === '')) return null;
     const [n, lo, hi] = [now, min, max].map(Number);

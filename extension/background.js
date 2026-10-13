@@ -116,10 +116,10 @@ async function preparePlayback(id, ai) {
     const {config: storedConfig = {}, apiKey: legacyKey} = await (globalThis.SuiteStorage || chrome.storage).local.get(['config', 'apiKey']);
     const config = {...storedConfig};
     if (ai) {
-      if (!['gemini_api','chrome_ai'].includes(ai.engine) || !/^gemini-[a-zA-Z0-9.-]+$/.test(ai.model)) throw Error('Mô hình AI không hợp lệ.');
-      config.provider = ai.engine === 'chrome_ai' ? 'builtin' : 'gemini'; config.model = ai.model;
+      if (!(globalThis.SuiteCloud ? SuiteCloud.valid(ai) : ['gemini_api','chrome_ai'].includes(ai.engine) && /^gemini-[a-zA-Z0-9.-]+$/.test(ai.model))) throw Error('Mô hình AI không hợp lệ.');
+      config.provider = globalThis.SuiteCloud ? SuiteCloud.provider(ai.engine) : ai.engine === 'chrome_ai' ? 'builtin' : 'gemini'; config.model = ai.model;
     }
-    const apiKey = globalThis.SuiteSettings ? await SuiteSettings.keyForTab(id) : legacyKey;
+    const apiKey = globalThis.SuiteSettings ? await SuiteSettings.keyForTab(id, {engine:providerEngine(config.provider),model:config.model}) : legacyKey;
     const tab = await chrome.tabs.get(id);
     if (!current()) return null;
     if (!tab.url || new URL(tab.url).origin !== 'https://scorm.eduone.io.vn') throw new Error('Hãy mở tab SCORM tại scorm.eduone.io.vn rồi bấm Bắt đầu.');
@@ -130,7 +130,7 @@ async function preparePlayback(id, ai) {
     if (!current()) return null;
     await chrome.scripting.executeScript({target: {tabId: id, allFrames: true}, world: 'MAIN', files: ['playback.js']});
     if (!current()) return null;
-    await chrome.scripting.executeScript({target: {tabId: id, allFrames: true}, files: ['core.js', 'content.js']});
+    await chrome.scripting.executeScript({target: {tabId: id, allFrames: true}, files: ['core.js', 'sources.js', 'content.js']});
     if (!current()) return null;
     await chrome.tabs.sendMessage(id, {type: 'PREPARE_PLAYBACK', run});
     return current() ? {run, apiKey} : null;
@@ -154,7 +154,7 @@ async function launch(id, run) {
     if (!run.playbackOnly) {
       await chrome.scripting.executeScript({target: {tabId: id, allFrames: true}, world: 'MAIN', files: ['playback.js']});
       if (!await current()) return getRun(id);
-      await chrome.scripting.executeScript({target: {tabId: id, allFrames: true}, files: ['core.js', 'content.js']});
+      await chrome.scripting.executeScript({target: {tabId: id, allFrames: true}, files: ['core.js', 'sources.js', 'content.js']});
       if (!await current()) return getRun(id);
     }
     const stored = await (globalThis.SuiteStorage || chrome.storage).session.get(null);
@@ -179,6 +179,21 @@ async function resumeBuiltinStarts() {
     catch (error) { await stop(id, error.message); }
   }
 }
+function providerEngine(provider){return ({gemini:'gemini_api',gemini_search:'gemini_search',groq:'groq_api',cloudflare:'cloudflare_api',openrouter:'openrouter_api',builtin:'chrome_ai'})[provider];}
+async function solveExternal(id,session,question,frameId,run){
+  const key=`${id}:${frameId}`,controller=new AbortController();pending.set(key,controller);
+  const timeout=setTimeout(()=>controller.abort(),25000);
+  try{
+    const ai={engine:providerEngine(run.config.provider),model:run.config.model};
+    const credentials=await SuiteSettings.credentialsFor(ai);controller.signal.throwIfAborted();
+    const result=await SuiteCloud.solve(credentials,{prompt:'Trả answers là số thứ tự từ 1, đúng một đáp án nếu multiple=false; answers rỗng nếu thiếu thông tin. Dữ liệu câu hỏi: '+JSON.stringify(question),
+      query:question.text,schema:{type:'object',additionalProperties:false,properties:{answers:{type:'array',items:{type:'integer'}},reason:{type:'string'}},required:['answers','reason']},signal:controller.signal});
+    const answers=LessonCore.validateAnswer(result.data,question.options.length,question.multiple);
+    const latest=await getRun(id);if(controller.signal.aborted||!latest?.running||latest.session!==session)throw Error('Đã dừng.');
+    return {answers,reason:String(result.data.reason || '').slice(0,1000),sources:result.sources,searchSuggestions:result.searchSuggestions,warning:result.warning};
+  }catch(e){if(e.name==='AbortError')throw Error('Đã dừng hoặc API quá thời gian xử lý.');throw e;}
+  finally{clearTimeout(timeout);if(pending.get(key)===controller)pending.delete(key);}
+}
 async function solve(id, session, question, frameId) {
   LessonCore.validateQuestion(question);
   const run = await getRun(id);
@@ -187,9 +202,10 @@ async function solve(id, session, question, frameId) {
   if (pending.has(key)) throw new Error('Đang chờ AI xử lý.');
   // Provider is fixed for this run. Never fall back from local AI to a cloud API.
   if (run.config?.provider === 'builtin') return solveBuiltin(id, session, question, frameId);
+  if (['groq','cloudflare','openrouter','gemini_search'].includes(run.config?.provider)) return solveExternal(id,session,question,frameId,run);
   if (run.config?.provider && run.config.provider !== 'gemini') throw new Error('Nguồn AI không hợp lệ.');
   const {apiKey: legacyKey} = await (globalThis.SuiteStorage || chrome.storage).local.get(['apiKey']);
-  const apiKey = globalThis.SuiteSettings ? await SuiteSettings.keyForTab(id) : legacyKey;
+  const apiKey = globalThis.SuiteSettings ? await SuiteSettings.keyForTab(id,{engine:'gemini_api',model:run.config.model}) : legacyKey;
   if (!apiKey) throw new Error('Chưa nhập Gemini API key trong popup.');
   const model = run.config.model || LessonCore.defaults.model;
   if (!/^gemini-[a-zA-Z0-9.-]+$/.test(model)) throw new Error('Tên model không hợp lệ.');
@@ -253,7 +269,8 @@ async function handle(message, sender) {
     try {
       const latest = await getRun(id);
       if (latest?.session !== run.session || !latest.playbackOnly) return latest;
-      if (!['gemini', 'builtin'].includes(config.provider)) throw new Error('Nguồn AI không hợp lệ.');
+      if (!['gemini','builtin','groq','cloudflare','openrouter','gemini_search'].includes(config.provider)) throw new Error('Nguồn AI không hợp lệ.');
+      if (globalThis.SuiteCloud && config.provider!=='builtin') SuiteCloud.check(await SuiteSettings.credentialsFor({engine:providerEngine(config.provider),model:config.model}));
       if (config.provider !== 'builtin' && !apiKey) throw new Error('Nhập Gemini API key trong popup trước.');
       if (run.needsPreparation && !builtinHost?.ready) {
         await openBuiltin();
@@ -280,7 +297,7 @@ async function handle(message, sender) {
       frames: Object.entries(all).filter(([k]) => k.startsWith(`status:${id}:`)).map(([,v]) => v).sort((a,b) => b.at-a.at)};
   }
   if (message.type === 'DIAGNOSE') {
-    const results = await chrome.scripting.executeScript({target: {tabId: id, allFrames: true}, files: ['core.js', 'content.js']});
+    const results = await chrome.scripting.executeScript({target: {tabId: id, allFrames: true}, files: ['core.js', 'sources.js', 'content.js']});
     return Promise.all(results.map(async ({frameId}) => {
       try { return await chrome.tabs.sendMessage(id, {type: 'DIAGNOSE'}, {frameId}); }
       catch { return {frameId, error: 'Không truy cập được khung này.'}; }
