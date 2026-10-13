@@ -1,6 +1,6 @@
 # Auto Canvas SCOM Phenikaa
 
-Tiện ích Chrome hỗ trợ làm bài trắc nghiệm trên Canvas, xem video bài giảng và làm bài tập theo dõi bài học SCORM. Phiên bản hiện tại: **2.4.0**.
+Tiện ích Chrome hỗ trợ làm bài trắc nghiệm trên Canvas, xem video bài giảng và làm bài tập theo dõi bài học SCORM. Phiên bản hiện tại: **2.4.1**.
 
 Tên repository giữ chữ `scom`; tên kỹ thuật của định dạng bài học là **SCORM**. Khi cài vào Chrome, tiện ích hiển thị tên **Trợ lý học tập · Canvas & SCORM**.
 
@@ -44,6 +44,7 @@ Bấm biểu tượng tiện ích để mở cửa sổ điều khiển, gọi l
 | Groq · GPT-OSS 120B + Tavily | Tìm kiếm web qua Tavily, đưa nội dung nguồn cho Groq suy luận | Key Groq và key Tavily |
 | Cloudflare · GPT-OSS 120B + Tavily | Tìm kiếm Tavily rồi gọi Workers AI | Token Cloudflare có quyền Workers AI: Read, Account ID 32 ký tự và key Tavily |
 | OpenRouter · Mô hình miễn phí + Tavily | Dùng `openrouter/free` chọn một model miễn phí hỗ trợ JSON; Tavily tìm kiếm riêng | Key OpenRouter và key Tavily |
+| 9Router · AI + tìm kiếm trên VPS | Tìm kiếm rồi suy luận qua cùng máy chủ 9Router | Một key 9Router, URL máy chủ, tên model AI/combo và model tìm kiếm |
 | Gemini 2.5 Flash + Google Search | Gọi công cụ Google Search tích hợp trong Gemini | Một key Gemini; project có quyền/model/hạn mức phù hợp |
 | Chrome AI · Gemini Nano trên máy | Chạy mô hình qua API AI tích hợp của Chrome | Trình duyệt/phần cứng hỗ trợ; tải mô hình và bộ dịch cần thiết |
 
@@ -81,6 +82,28 @@ Kết quả hiển thị liên kết **Nguồn tham khảo** trên Canvas và b�
 Miễn phí phụ thuộc tài khoản và hạn mức của nhà cung cấp, không phải miễn phí vô hạn. Đối chiếu [Groq](https://console.groq.com/docs/rate-limits), [Cloudflare](https://developers.cloudflare.com/workers-ai/platform/pricing/), [OpenRouter Free Router](https://openrouter.ai/docs/guides/routing/routers/free-router), [Tavily](https://docs.tavily.com/documentation/api-credits) và [Google](https://ai.google.dev/gemini-api/docs/pricing). Không cần bật gói trả phí để dùng các lựa chọn này trong hạn mức cho phép. Nếu tài khoản của bạn đã bật tính phí tự động, chính sách tính phí thuộc tài khoản đó.
 
 OpenRouter BYOK có thể quản lý key nhà cung cấp tại máy chủ OpenRouter, nhưng đây là cơ chế khác với key RAM trong tiện ích. Phiên bản này không gửi key Groq/Gemini/Cloudflare sang OpenRouter để tạo BYOK và không đăng ký dịch vụ tính phí thay bạn.
+
+### Dùng 9Router trên VPS (2.4.1)
+
+Tiện ích hỗ trợ một đầu mối 9Router cho cả Canvas và SCORM. 9Router phải được cài và chạy sẵn trên VPS hoặc máy chủ riêng; phiên bản tiện ích không tự cài, thuê VPS hoặc tạo tài khoản nhà cung cấp.
+
+1. Trong dashboard 9Router, cấu hình ít nhất một kết nối **AI** và một kết nối **Web Search** (Tavily, Exa, Brave, Perplexity… theo phiên bản bạn dùng). Nhập các key của nhà cung cấp ở 9Router, không nhập chúng vào ô key của tiện ích.
+2. Bật yêu cầu API key cho gateway, tạo key 9Router và dùng HTTPS khi truy cập VPS từ bên ngoài.
+3. Trong popup tiện ích, chọn **9Router · AI + tìm kiếm trên VPS**.
+4. Nhập **9Router API key** và **Địa chỉ 9Router**, ví dụ `https://router.example.com/v1`. Có thể nhập URL gốc hoặc đường dẫn reverse proxy; tiện ích thêm `/v1` khi thiếu. Không nhập endpoint `/chat/completions` hay `/search`, thông tin đăng nhập, query hoặc fragment vào URL. HTTP chỉ được chấp nhận cho `localhost`, `127.0.0.1` hoặc `[::1]` khi thử trên cùng máy.
+5. Nhập đúng tên **Model AI hoặc combo** đã cấu hình trong 9Router. Lấy ID từ dashboard hoặc API `/v1/models`; không dùng tên hiển thị khác với ID.
+6. Nhập **Model tìm kiếm**, ví dụ `tavily/search`, `exa/search` hoặc tên combo tìm kiếm đã cấu hình. Lấy ID từ danh sách Web Search hoặc `/v1/models/web`. Đây là tên model, không phải API key thứ hai.
+7. Bấm chế độ chạy phù hợp.
+
+Tiện ích gửi một yêu cầu `/v1/search`, lấy tối đa ba nguồn, rồi gửi nội dung nguồn cùng câu hỏi tới `/v1/chat/completions`. Cả hai dùng **cùng key 9Router** và cùng địa chỉ máy chủ. Kết quả `snippet`/`content` được xử lý như dữ liệu nguồn; các đáp án vẫn được kiểm tra trước khi chọn. Không gọi Tavily/OpenRouter trực tiếp khi bạn chọn 9Router.
+
+Key gateway và cấu hình phía tiện ích giữ trong RAM theo phiên Chrome, có thể khôi phục sau khi đóng popup hoặc worker khởi động lại. Thay địa chỉ gateway làm vô hiệu key cũ để tránh gửi nhầm key sang máy chủ khác; nhập lại key đúng máy chủ. Bản này không tự đăng ký BYOK hay gửi các key khác sang VPS.
+
+**Việc lưu dữ liệu trên VPS do 9Router quản lý riêng:** key nhà cung cấp có thể được lưu trong database 9Router; thoát Chrome không xóa chúng. Tắt request/response logging (`ENABLE_REQUEST_LOGS=false`) nếu không muốn 9Router ghi nội dung câu hỏi/đáp án. Không bật các chế độ lưu prompt/response khác trên gateway. Tiện ích không ghi đáp án hoặc nguồn web xuống đĩa.
+
+Phía tiện ích không tự thử lại hay đổi model khi 9Router lỗi, và nút Dừng hủy yêu cầu đang chạy. Combo hoặc retry cấu hình trên 9Router vẫn có thể thực hiện các lượt thử/đổi provider phía VPS; chọn model trực tiếp nếu muốn hạn chế hành vi đó. Gateway thêm một bước mạng và không loại bỏ được lỗi/quota của nhà cung cấp. Token Saver của 9Router được yêu cầu tắt cho lượt chat này để giữ nguyên câu hỏi/đáp án và định dạng trả lời.
+
+Hướng dẫn gốc: [9Router](https://github.com/decolua/9router), [Docker](https://github.com/decolua/9router/blob/master/DOCKER.md), [Chat API](https://github.com/decolua/9router/blob/master/skills/9router-chat/SKILL.md), [Web Search API](https://github.com/decolua/9router/blob/master/skills/9router-web-search/SKILL.md). API và tên model có thể khác ở các bản fork; phần tích hợp này theo giao thức của `decolua/9router`.
 
 ### Dùng Chrome AI
 

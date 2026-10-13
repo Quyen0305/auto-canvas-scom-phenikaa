@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Trợ lý học tập · Canvas & SCORM",
-  "version": "2.4.0",
-  "description": "Canvas và SCORM: Gemini, Groq, Cloudflare, OpenRouter, tìm kiếm web và Chrome AI; key trong RAM theo phiên Chrome.",
+  "version": "2.4.1",
+  "description": "Canvas và SCORM: Gemini, Groq, Cloudflare, OpenRouter, 9Router trên VPS, tìm kiếm web và Chrome AI; key RAM theo phiên.",
   "minimum_chrome_version": "111",
   "permissions": [
     "storage",

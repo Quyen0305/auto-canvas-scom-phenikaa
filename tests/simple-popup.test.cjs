@@ -1,8 +1,8 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const {JSDOM}=require('jsdom');
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
-async function setup({canvas=false,engine='gemini_api',prepare=async()=>{},keyReady=false}={}){
+async function setup({canvas=false,engine='gemini_api',prepare=async()=>{},keyReady=false,aiConfig={}}={}){
   const dom=new JSDOM(fs.readFileSync('extension/suite-popup.html','utf8'),{url:'https://extension.test/suite-popup.html',runScripts:'outside-only'});
-  const w=dom.window,messages=[],commands=[],ai={engine,model:'gemini-2.5-flash',keySaved:keyReady};let preparations=0;
+  const w=dom.window,messages=[],commands=[],ai={engine,model:'gemini-2.5-flash',keySaved:keyReady,...aiConfig};let preparations=0;
   w.LessonBuiltin={Engine:class{prepare(){preparations++;return prepare();}destroy(){}}};
   w.chrome={runtime:{sendMessage:async message=>{
     messages.push(message);
@@ -112,4 +112,24 @@ test('Google Search needs only Gemini key and Cloudflare additionally needs an A
     h.el('aiModel').value='cloudflare_api|@cf/openai/gpt-oss-120b';h.el('aiModel').dispatchEvent(new h.w.Event('change'));await flush();
     assert.equal(h.el('accountSection').hidden,false);assert.equal(h.el('searchKeySection').hidden,false);
   }finally{h.close();}
+});
+
+test('9Router popup needs one key plus gateway and model names',async()=>{
+  const h=await setup();try{
+    h.el('aiModel').value='ninerouter';h.el('aiModel').dispatchEvent(new h.w.Event('change'));await flush();
+    assert.equal(h.el('searchKeySection').hidden,true);assert.equal(h.el('routerSection').hidden,false);
+    h.el('baseURL').value='https://router.example.org/v1';h.el('routerModel').value='my-quiz-model';h.el('searchModel').value='tavily/search';h.el('apiKey').value='ROUTER_PRIVATE';h.el('start').click();await flush();
+    const start=h.messages.find(m=>m.action==='SUITE_START');assert.equal(start.data.engine,'ninerouter_api');assert.equal(start.data.baseURL,'https://router.example.org/v1');assert.equal(start.data.model,'my-quiz-model');assert.equal(start.data.searchModel,'tavily/search');assert.equal(start.data.searchKey,undefined);
+    h.w.dispatchEvent(new h.w.Event('pagehide'));assert.equal(h.el('apiKey').value,'');
+  }finally{h.close();}
+});
+
+test('reopened 9Router popup restores gateway and models and starts with its retained key',async()=>{
+  const h=await setup({engine:'ninerouter_api',keyReady:true,aiConfig:{model:'my-quiz-model',routerModel:'my-quiz-model',baseURL:'https://router.example.org/v1',searchModel:'exa/search'}});
+  try{assert.equal(h.el('aiModel').value,'ninerouter');assert.equal(h.el('baseURL').value,'https://router.example.org/v1');assert.equal(h.el('routerModel').value,'my-quiz-model');assert.equal(h.el('searchModel').value,'exa/search');h.el('apiKey').value='';h.el('start').click();await flush();const start=h.messages.find(m=>m.action==='SUITE_START');assert.ok(start);assert.equal(start.data.apiKey,undefined);assert.equal(start.data.model,'my-quiz-model');}finally{h.close();}
+});
+
+test('editing a gateway URL cannot carry a visible key draft to the new destination',async()=>{
+  const h=await setup({engine:'ninerouter_api',keyReady:true,aiConfig:{model:'quiz',routerModel:'quiz',baseURL:'https://one.example.org/v1',searchModel:'tavily/search'}});
+  try{h.el('apiKey').value='OLD_ROUTER_KEY';h.el('baseURL').value='https://two.example.org/v1';h.el('baseURL').dispatchEvent(new h.w.Event('input'));await flush();assert.equal(h.el('apiKey').value,'');const change=h.messages.filter(m=>m.action==='SUITE_SETTINGS'&&m.data?.baseURL).at(-1);assert.equal(change.data.apiKey,undefined);}finally{h.close();}
 });

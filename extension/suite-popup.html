@@ -6,6 +6,7 @@
 <label for="aiModel">Mô hình AI <span>Dùng chung cho Canvas và SCORM</span></label>
 <select id="aiModel" disabled>
   <optgroup label="AI + tìm kiếm web">
+    <option value="ninerouter">9Router · AI + tìm kiếm trên VPS</option>
     <option value="groq_api|openai/gpt-oss-120b">Groq · GPT-OSS 120B + Tavily</option>
     <option value="cloudflare_api|@cf/openai/gpt-oss-120b">Cloudflare · GPT-OSS 120B + Tavily</option>
     <option value="openrouter_api|openrouter/free">OpenRouter · Mô hình miễn phí + Tavily</option>
@@ -35,6 +36,11 @@
 <div id="keySection"><label id="apiKeyLabel" for="apiKey">Gemini API key</label><input id="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="Nhập API key cho phiên này" disabled></div>
 <div id="searchKeySection" hidden><label for="searchKey">Tavily API key <span>Dùng chung cho các phương án ghép Tavily</span></label><input id="searchKey" type="password" autocomplete="off" spellcheck="false" placeholder="Nhập key Tavily cho phiên này" disabled></div>
 <div id="accountSection" hidden><label for="accountId">Cloudflare Account ID <span>32 ký tự · Token cần quyền Workers AI: Read</span></label><input id="accountId" type="text" autocomplete="off" spellcheck="false" placeholder="Account ID của Cloudflare" disabled></div>
+<div id="routerSection" hidden>
+<label for="baseURL">Địa chỉ 9Router <span>HTTPS trên VPS · Có thể kết thúc bằng /v1</span></label><input id="baseURL" type="url" autocomplete="off" spellcheck="false" placeholder="https://router.example.com/v1" disabled>
+<label for="routerModel">Model AI hoặc combo <span>Nhập đúng tên đã cấu hình trong 9Router</span></label><input id="routerModel" type="text" autocomplete="off" spellcheck="false" placeholder="Ví dụ: my-quiz-model" disabled>
+<label for="searchModel">Model tìm kiếm trong 9Router <span>Không phải API key · Lấy tên từ danh sách Web Search</span></label><input id="searchModel" type="text" autocomplete="off" spellcheck="false" value="tavily/search" disabled>
+</div>
 <p id="providerHelp" class="subtle" hidden></p>
 <p id="aiStatus" class="subtle" role="status" aria-live="polite">Đang đọc cấu hình…</p>
 <div class="tabs" role="tablist" aria-label="Công cụ"><button id="tab-scorm" role="tab" aria-selected="true" aria-controls="panel-scorm" data-mode="scorm">SCORM</button><button id="tab-canvas" role="tab" aria-selected="false" aria-controls="panel-canvas" data-mode="canvas">Canvas</button></div>

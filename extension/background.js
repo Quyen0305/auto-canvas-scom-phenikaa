@@ -179,7 +179,7 @@ async function resumeBuiltinStarts() {
     catch (error) { await stop(id, error.message); }
   }
 }
-function providerEngine(provider){return ({gemini:'gemini_api',gemini_search:'gemini_search',groq:'groq_api',cloudflare:'cloudflare_api',openrouter:'openrouter_api',builtin:'chrome_ai'})[provider];}
+function providerEngine(provider){return ({gemini:'gemini_api',gemini_search:'gemini_search',groq:'groq_api',cloudflare:'cloudflare_api',openrouter:'openrouter_api',ninerouter:'ninerouter_api',builtin:'chrome_ai'})[provider];}
 async function solveExternal(id,session,question,frameId,run){
   const key=`${id}:${frameId}`,controller=new AbortController();pending.set(key,controller);
   const timeout=setTimeout(()=>controller.abort(),25000);
@@ -202,7 +202,7 @@ async function solve(id, session, question, frameId) {
   if (pending.has(key)) throw new Error('Đang chờ AI xử lý.');
   // Provider is fixed for this run. Never fall back from local AI to a cloud API.
   if (run.config?.provider === 'builtin') return solveBuiltin(id, session, question, frameId);
-  if (['groq','cloudflare','openrouter','gemini_search'].includes(run.config?.provider)) return solveExternal(id,session,question,frameId,run);
+  if (['groq','cloudflare','openrouter','gemini_search','ninerouter'].includes(run.config?.provider)) return solveExternal(id,session,question,frameId,run);
   if (run.config?.provider && run.config.provider !== 'gemini') throw new Error('Nguồn AI không hợp lệ.');
   const {apiKey: legacyKey} = await (globalThis.SuiteStorage || chrome.storage).local.get(['apiKey']);
   const apiKey = globalThis.SuiteSettings ? await SuiteSettings.keyForTab(id,{engine:'gemini_api',model:run.config.model}) : legacyKey;
@@ -269,7 +269,7 @@ async function handle(message, sender) {
     try {
       const latest = await getRun(id);
       if (latest?.session !== run.session || !latest.playbackOnly) return latest;
-      if (!['gemini','builtin','groq','cloudflare','openrouter','gemini_search'].includes(config.provider)) throw new Error('Nguồn AI không hợp lệ.');
+      if (!['gemini','builtin','groq','cloudflare','openrouter','gemini_search','ninerouter'].includes(config.provider)) throw new Error('Nguồn AI không hợp lệ.');
       if (globalThis.SuiteCloud && config.provider!=='builtin') SuiteCloud.check(await SuiteSettings.credentialsFor({engine:providerEngine(config.provider),model:config.model}));
       if (config.provider !== 'builtin' && !apiKey) throw new Error('Nhập Gemini API key trong popup trước.');
       if (run.needsPreparation && !builtinHost?.ready) {

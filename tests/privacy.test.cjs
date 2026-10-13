@@ -240,3 +240,25 @@ test('Stop during provider credential validation cannot revive a worker-owned St
   await h.request({type:'STOP',tabId:7});release();const result=await pending;
   assert.equal(result.data.cancelled,true);assert.notEqual((await h.request({type:'GET_STATUS',tabId:7})).run?.running,true);
 });
+
+test('9Router uses one session key for Canvas/SCORM and preserves gateway config across worker restart',async()=>{
+  const calls=[],volatileSession={};const fetcher=async(url,options)=>{const request=JSON.parse(options.body);calls.push({url,request,headers:options.headers});const canvas=options.body.includes('selected_indices');const value=canvas?{answers:[{id:'q1',answerable:true,selected_indices:[1],answer_texts:['2'],explanation:'Một cộng một bằng hai.'}]}:{answers:[2],reason:'Một cộng một bằng hai.'};return {ok:true,status:200,text:async()=>JSON.stringify(url.endsWith('/search')?{results:[{url:'https://example.org/math',snippet:'Một cộng một bằng hai.'}]}:{choices:[{message:{content:JSON.stringify(value)}}]})};};
+  const h=setup({volatileSession,fetcher});const saved=await h.request({action:'SUITE_SETTINGS',data:{engine:'ninerouter_api',model:'my-quiz-model',apiKey:'ROUTER_PRIVATE',baseURL:'https://router.example.org/v1',searchModel:'tavily/search'}});
+  assert.equal(saved.success,true);assert.equal(saved.data.searchKeySaved,false);assert.equal(JSON.stringify(saved.data).includes('ROUTER_PRIVATE'),false);
+  const restarted=setup({volatileSession,fetcher});const current=(await restarted.request({action:'SUITE_SETTINGS'})).data;assert.equal(current.baseURL,'https://router.example.org/v1');assert.equal(current.searchModel,'tavily/search');
+  const start=await restarted.request({action:'SUITE_START',tabId:7,command:'scorm',data:{engine:'ninerouter_api',model:'my-quiz-model'}});assert.equal(start.success,true,start.error);
+  const result=await restarted.request({type:'SOLVE',session:start.data.session,question:{text:'1 + 1?',options:['1','2'],multiple:false,history:[]}}, {url:'https://scorm.eduone.io.vn/en/learn/test',tab:{id:7},frameId:0});assert.deepEqual(Array.from(result.answers),[1]);
+  const sender={url:'https://canvas.test/courses/1/quizzes/2/take',tab:{id:9},frameId:0};
+  const canvas=await restarted.request({action:'SOLVE_QUESTIONS',data:{engine:'ninerouter_api',model:'my-quiz-model',requestId:'router-one',questions:[{id:'q1',questionText:'1 + 1?',options:['1','2']}]}},sender);
+  assert.equal(canvas.success,true,canvas.error);assert.equal(canvas.data.answers[0].sources.length,1);assert.equal(calls.length,4);
+  for(const call of calls)assert.equal(call.headers.Authorization,'Bearer ROUTER_PRIVATE');
+  const page=await restarted.request({action:'CANVAS_STORAGE',data:{area:'local',method:'get',value:['apiKey','aiEngine','aiModel']}},sender);assert.equal(page.data.apiKey,'');assert.equal(JSON.stringify(page).includes('ROUTER_PRIVATE'),false);assert.equal(h.nativeWrites.length+restarted.nativeWrites.length,0);
+});
+
+test('changing 9Router destination invalidates the old key even if a stale draft is resubmitted',async()=>{
+  const h=setup();await h.request({action:'SUITE_SETTINGS',data:{engine:'ninerouter_api',model:'quiz',apiKey:'OLD_ROUTER_KEY',baseURL:'https://one.example.org/v1',searchModel:'tavily/search'}});
+  const same=await h.request({action:'SUITE_SETTINGS',data:{baseURL:'https://one.example.org'}});assert.equal(same.data.keySaved,true);
+  const changed=await h.request({action:'SUITE_SETTINGS',data:{baseURL:'https://two.example.org/v1',apiKey:'OLD_ROUTER_KEY'}});assert.equal(changed.data.keySaved,false);
+  const creds=await h.context.SuiteSettings.credentialsFor({engine:'ninerouter_api',model:'quiz'});assert.equal(creds.apiKey,'');
+  const reentered=await h.request({action:'SUITE_SETTINGS',data:{apiKey:'NEW_ROUTER_KEY'}});assert.equal(reentered.data.keySaved,true);assert.equal(h.nativeWrites.length,0);
+});

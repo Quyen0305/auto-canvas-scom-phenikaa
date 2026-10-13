@@ -10,7 +10,7 @@
   }
   function lock(){
     if(closed)return;
-    $('aiModel').disabled=$('apiKey').disabled=$('searchKey').disabled=$('accountId').disabled=!loaded||working;
+    $('aiModel').disabled=$('apiKey').disabled=$('searchKey').disabled=$('accountId').disabled=$('baseURL').disabled=$('routerModel').disabled=$('searchModel').disabled=!loaded||working;
     for(const id of ['start','canvas-auto','canvas-target'])$(id).disabled=!loaded||working;
     $('stop').disabled=$('canvas-stop').disabled=!loaded;
   }
@@ -24,17 +24,24 @@
   }
   function selection(){
     const value=$('aiModel').value;
+    if(value==='ninerouter')return {engine:'ninerouter_api',model:$('routerModel').value.trim()};
     if(value==='chrome_ai')return {engine:'chrome_ai',model:/^gemini-/.test(ai.model)?ai.model:'gemini-3.8-flash'};
     if(value.includes('|')){const [engine,model]=value.split('|');return {engine,model};}
     return {engine:'gemini_api',model:value};
   }
-  function entered(){return Object.fromEntries(['apiKey','searchKey','accountId'].map(id=>[id,$(id).value.trim()]).filter(([,value])=>value));}
+  function entered(){
+    const engine=selection().engine,fields=['apiKey'];
+    if(['groq_api','cloudflare_api','openrouter_api'].includes(engine))fields.push('searchKey');
+    if(engine==='cloudflare_api')fields.push('accountId');
+    if(engine==='ninerouter_api')fields.push('baseURL','searchModel');
+    return Object.fromEntries(fields.map(id=>[id,$(id).value.trim()]).filter(([,value])=>value));
+  }
   function clearInputs(){for(const id of ['apiKey','searchKey','accountId'])$(id).value='';}
   function aiUI(){
     const chosen=selection(),paired=['groq_api','cloudflare_api','openrouter_api'].includes(chosen.engine);
-    $('keySection').hidden=chosen.engine==='chrome_ai';$('searchKeySection').hidden=!paired;$('accountSection').hidden=chosen.engine!=='cloudflare_api';
-    $('apiKeyLabel').textContent=({groq_api:'Groq API key',cloudflare_api:'Cloudflare API token',openrouter_api:'OpenRouter API key'})[chosen.engine] || 'Gemini API key';
-    const help={groq_api:'Cần 2 key: Groq và Tavily. Tìm kiếm nhanh, mỗi câu một lượt.',cloudflare_api:'Cần token Cloudflare, Account ID và key Tavily.',openrouter_api:'Dùng bộ định tuyến mô hình miễn phí của OpenRouter và tìm kiếm Tavily. Cần 2 key.',gemini_search:'Chỉ cần key Gemini. Tìm kiếm Google tích hợp; model có thể không trả nguồn cho mọi câu.'};
+    $('keySection').hidden=chosen.engine==='chrome_ai';$('searchKeySection').hidden=!paired;$('accountSection').hidden=chosen.engine!=='cloudflare_api';$('routerSection').hidden=chosen.engine!=='ninerouter_api';
+    $('apiKeyLabel').textContent=({groq_api:'Groq API key',cloudflare_api:'Cloudflare API token',openrouter_api:'OpenRouter API key',ninerouter_api:'9Router API key'})[chosen.engine] || 'Gemini API key';
+    const help={ninerouter_api:'Chỉ nhập 1 key 9Router. Cấu hình AI và tìm kiếm tại 9Router trên VPS; key thật của các nhà cung cấp nằm trên VPS.',groq_api:'Cần 2 key: Groq và Tavily. Tìm kiếm nhanh, mỗi câu một lượt.',cloudflare_api:'Cần token Cloudflare, Account ID và key Tavily.',openrouter_api:'Dùng bộ định tuyến mô hình miễn phí của OpenRouter và tìm kiếm Tavily. Cần 2 key.',gemini_search:'Chỉ cần key Gemini. Tìm kiếm Google tích hợp; model có thể không trả nguồn cho mọi câu.'};
     $('providerHelp').hidden=!help[chosen.engine];$('providerHelp').textContent=help[chosen.engine] || '';
   }
   function prepareAI(){
@@ -68,7 +75,11 @@
     const value=$('aiModel').value;
     const result=await settings({...selection(),...(withKey?entered():{})});
     if(closed||$('aiModel').value!==value)return;
-    ai=result;keyUI();
+    ai=result;
+    if(!withKey && ai.engine==='ninerouter_api'){
+      $('baseURL').value=ai.baseURL || '';$('routerModel').value=ai.routerModel || ai.model || '';$('searchModel').value=ai.searchModel || 'tavily/search';
+    }
+    keyUI();
   }
   async function canvas(command){
     let url;try{url=new URL(tabUrl);}catch{}
@@ -104,6 +115,7 @@
     const preparation=local && command!=='START'?prepareAI():Promise.resolve();
     try{
       if(!local){
+        if(selection().engine==='ninerouter_api' && !$('routerModel').value.trim())throw Error('Nhập model AI hoặc combo đã cấu hình trong 9Router.');
         const key=$('apiKey').value.trim();
         if(!key && !ai.keySaved)throw Error('Nhập API key cho phiên này. Key chỉ giữ tạm trong RAM.');
         const pending=chrome.runtime.sendMessage({action:'SUITE_START',tabId,command:command==='START'?'scorm':command,
@@ -140,11 +152,12 @@
     }catch(error){notice(error.message,true);}
   }
   $('aiModel').addEventListener('change',()=>{
-    clearInputs();ai={...ai,keySaved:false,searchKeySaved:false,accountId:''};aiUI();modelReady=false;
+    clearInputs();$('baseURL').value='';$('routerModel').value='';$('searchModel').value='tavily/search';ai={...ai,keySaved:false,searchKeySaved:false,accountId:''};aiUI();modelReady=false;
     if($('aiModel').value==='chrome_ai')prepareAI();else cancelPreparation();
     save().catch(error=>notice(error.message,true));
   });
-  for(const id of ['apiKey','searchKey','accountId'])$(id).addEventListener('input',()=>{
+  for(const id of ['apiKey','searchKey','accountId','baseURL','routerModel','searchModel'])$(id).addEventListener('input',()=>{
+    if(id==='baseURL')$('apiKey').value='';
     if(loaded && $(id).value.trim())save(true).catch(error=>notice(error.message,true));
   });
   $('start').addEventListener('click',()=>start('START'));
@@ -164,9 +177,11 @@
     if(closed)return;
     tabId=tabs[0]?.id;tabUrl=tabs[0]?.url || '';
     const config=await settings();if(closed)return;ai=config;
-    const value=ai.engine==='chrome_ai'?'chrome_ai':ai.engine==='gemini_api'?ai.model:ai.engine+'|'+ai.model;
+    const value=ai.engine==='chrome_ai'?'chrome_ai':ai.engine==='gemini_api'?ai.model:ai.engine==='ninerouter_api'?'ninerouter':ai.engine+'|'+ai.model;
     if(![...$('aiModel').options].some(option=>option.value===value))$('aiModel').add(new Option(ai.model,value));
-    $('aiModel').value=value;aiUI();
+    $('aiModel').value=value;
+    if(ai.engine==='ninerouter_api'){$('baseURL').value=ai.baseURL || '';$('routerModel').value=ai.routerModel || ai.model || '';$('searchModel').value=ai.searchModel || 'tavily/search';}
+    aiUI();
     keyUI();
     let url;try{url=new URL(tabUrl);}catch{}
     const isCanvas=url && url.hostname!=='scorm.eduone.io.vn' && (/\/quizzes\//.test(url.pathname)||url.protocol==='file:');

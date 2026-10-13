@@ -422,7 +422,7 @@ Phải trả lời đầy đủ mọi id, mỗi id đúng một lần, không th
 Dữ liệu câu hỏi:
 ${JSON.stringify(questions)}`;
   let parsed,web;
-  if(globalThis.SuiteCloud && ['groq_api','cloudflare_api','openrouter_api','gemini_search'].includes(data.engine)) {
+  if(globalThis.SuiteCloud && ['groq_api','cloudflare_api','openrouter_api','gemini_search','ninerouter_api'].includes(data.engine)) {
     if(questions.length!==1)throw apiError('Phương án có tìm kiếm web xử lý từng câu riêng.','INVALID_INPUT');
     web=await SuiteCloud.solve(data,{prompt,query:questions[0].questionText,schema:batchResponseSchema(questions),signal:controller.signal});
     controller.signal.throwIfAborted();parsed=web.data;

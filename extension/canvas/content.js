@@ -492,7 +492,7 @@
 
       if (pending.length) {
         throwIfCancelled(controller.signal);
-        const web=['groq_api','cloudflare_api','openrouter_api','gemini_search'].includes(config.aiEngine);
+        const web=['groq_api','cloudflare_api','openrouter_api','gemini_search','ninerouter_api'].includes(config.aiEngine);
         const groups=web ? pending.map(q=>[q]) : groupQuestions(pending);
         if(web) {
           config.requestId=Date.now()+':'+(++localRequestSequence);
