@@ -182,7 +182,7 @@ async function resumeBuiltinStarts() {
 function providerEngine(provider){return ({gemini:'gemini_api',gemini_search:'gemini_search',groq:'groq_api',cloudflare:'cloudflare_api',openrouter:'openrouter_api',ninerouter:'ninerouter_api',builtin:'chrome_ai'})[provider];}
 async function solveExternal(id,session,question,frameId,run){
   const key=`${id}:${frameId}`,controller=new AbortController();pending.set(key,controller);
-  const timeout=setTimeout(()=>controller.abort(),25000);
+  const timeout=setTimeout(()=>controller.abort(),run.config.provider==='ninerouter' && run.config.model==='adaptive'?65000:25000);
   try{
     const ai={engine:providerEngine(run.config.provider),model:run.config.model};
     const credentials=await SuiteSettings.credentialsFor(ai);controller.signal.throwIfAborted();
