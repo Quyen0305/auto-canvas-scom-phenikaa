@@ -504,6 +504,8 @@
             " (" + groups[index].length + " câu)...", "running");
           const result = await callGeminiApi(config, groups[index], controller.signal);
           applyAnswers(groups[index], result.answers);
+          const method=result.answers?.[0]?.method;
+          if(method)updateStatus('✅ '+method+' · '+(result.answers[0].modelUsed || 'AI')+(result.answers[0].elapsedMs?' · '+(result.answers[0].elapsedMs/1000).toFixed(1)+'s':''), 'success');
         }
       }
       if (config.autoClickAnswer) await saveCanvasProgress(applied, controller.signal);
