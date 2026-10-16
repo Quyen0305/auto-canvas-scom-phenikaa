@@ -34,9 +34,7 @@
     if(['groq_api','cloudflare_api','openrouter_api'].includes(engine))fields.push('searchKey');
     if(engine==='cloudflare_api')fields.push('accountId');
     if(engine==='ninerouter_api'){
-      const pasted=$('apiKey').value.trim();
-      if(pasted){const parsed=pasted.split('|');if(parsed.length===2)return {apiKey:parsed[1].trim(),baseURL:parsed[0].trim()};}
-      return {};
+      return $('apiKey').value.trim()?{apiKey:$('apiKey').value.trim()}:{};
     }
     return Object.fromEntries(fields.map(id=>[id,$(id).value.trim()]).filter(([,value])=>value));
   }
@@ -44,9 +42,9 @@
   function aiUI(){
     const chosen=selection(),paired=['groq_api','cloudflare_api','openrouter_api'].includes(chosen.engine);
     $('keySection').hidden=chosen.engine==='chrome_ai';$('searchKeySection').hidden=!paired;$('accountSection').hidden=chosen.engine!=='cloudflare_api';$('routerSection').hidden=true;
-    $('apiKeyLabel').textContent=({groq_api:'Groq API key',cloudflare_api:'Cloudflare API token',openrouter_api:'OpenRouter API key',ninerouter_api:'Kết nối Adaptive Search VPS'})[chosen.engine] || 'Gemini API key';
-    if(chosen.engine==='ninerouter_api')$('apiKey').placeholder='https://your-backend.trycloudflare.com | APP_API_KEY';
-    const help={ninerouter_api:'Dán một dòng gồm HTTPS URL của Adaptive Search và APP_API_KEY, ngăn bằng dấu |. Không dùng key 9Router gốc. AI, SearXNG và fallback chạy trên VPS.',groq_api:'Cần 2 key: Groq và Tavily. Tìm kiếm nhanh, mỗi câu một lượt.',cloudflare_api:'Cần token Cloudflare, Account ID và key Tavily.',openrouter_api:'Dùng bộ định tuyến mô hình miễn phí của OpenRouter và tìm kiếm Tavily. Cần 2 key.',gemini_search:'Chỉ cần key Gemini. Tìm kiếm Google tích hợp; model có thể không trả nguồn cho mọi câu.'};
+    $('apiKeyLabel').textContent=({groq_api:'Groq API key',cloudflare_api:'Cloudflare API token',openrouter_api:'OpenRouter API key',ninerouter_api:'APP_API_KEY'})[chosen.engine] || 'Gemini API key';
+    if(chosen.engine==='ninerouter_api')$('apiKey').placeholder='Nhập APP_API_KEY';
+    const help={ninerouter_api:'Chỉ nhập APP_API_KEY. Địa chỉ Adaptive Search được cấu hình trong extension/adaptive-config.js; không dùng ROUTER_API_KEY.',groq_api:'Cần 2 key: Groq và Tavily. Tìm kiếm nhanh, mỗi câu một lượt.',cloudflare_api:'Cần token Cloudflare, Account ID và key Tavily.',openrouter_api:'Dùng bộ định tuyến mô hình miễn phí của OpenRouter và tìm kiếm Tavily. Cần 2 key.',gemini_search:'Chỉ cần key Gemini. Tìm kiếm Google tích hợp; model có thể không trả nguồn cho mọi câu.'};
     $('providerHelp').hidden=!help[chosen.engine];$('providerHelp').textContent=help[chosen.engine] || '';
   }
   function prepareAI(){
@@ -73,7 +71,7 @@
     if(closed || preparing)return;
     $('searchKey').placeholder=ai.searchKeySaved?'Key Tavily trong RAM đã sẵn sàng':'Nhập key Tavily cho phiên này';
     if(!$('accountId').value && ai.accountId)$('accountId').placeholder='Account ID trong RAM đã sẵn sàng';
-    $('apiKey').placeholder=ai.engine==='ninerouter_api'?(ai.keySaved?'Kết nối VPS trong RAM đã sẵn sàng':'https://backend.trycloudflare.com | APP_API_KEY'):(ai.keySaved?'Key tạm đã sẵn sàng · Nhập để thay thế':'Nhập API key cho phiên này');
+    $('apiKey').placeholder=ai.engine==='ninerouter_api'?(ai.keySaved?'Key VPS trong RAM đã sẵn sàng':'Nhập APP_API_KEY'):(ai.keySaved?'Key tạm đã sẵn sàng · Nhập để thay thế':'Nhập API key cho phiên này');
     $('aiStatus').textContent=ai.engine==='chrome_ai'?'AI trên máy · Không cần API key':ai.keySaved?'Key trong RAM đã sẵn sàng · Giữ đến khi thoát hẳn Chrome.':'Nhập API key · Chỉ giữ tạm trong RAM, không ghi xuống đĩa.';
   }
   async function save(withKey=false){
@@ -118,7 +116,7 @@
     const preparation=local && command!=='START'?prepareAI():Promise.resolve();
     try{
       if(!local){
-        if(selection().engine==='ninerouter_api' && $(`apiKey`).value.trim() && !$(`apiKey`).value.includes('|'))throw Error('Dán URL HTTPS và APP_API_KEY cách nhau bằng dấu |.');
+        if(selection().engine==='ninerouter_api' && $('apiKey').value.includes('|'))throw Error('Chỉ nhập APP_API_KEY, không nhập URL.');
         const key=$('apiKey').value.trim();
         if(!key && !ai.keySaved)throw Error('Nhập API key cho phiên này. Key chỉ giữ tạm trong RAM.');
         const pending=chrome.runtime.sendMessage({action:'SUITE_START',tabId,command:command==='START'?'scorm':command,
