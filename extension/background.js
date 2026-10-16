@@ -190,7 +190,7 @@ async function solveExternal(id,session,question,frameId,run){
       query:question.text,schema:{type:'object',additionalProperties:false,properties:{answers:{type:'array',items:{type:'integer'}},reason:{type:'string'}},required:['answers','reason']},questionData:question,signal:controller.signal});
     const answers=LessonCore.validateAnswer(result.data,question.options.length,question.multiple);
     const latest=await getRun(id);if(controller.signal.aborted||!latest?.running||latest.session!==session)throw Error('Đã dừng.');
-    return {answers,reason:String(result.data.reason || '').slice(0,1000),sources:result.sources,searchSuggestions:result.searchSuggestions,warning:result.warning};
+    return {answers,reason:String(result.data.reason || '').slice(0,1000),sources:result.sources,searchSuggestions:result.searchSuggestions,warning:result.warning,method:result.method,modelUsed:result.modelUsed,elapsedMs:result.elapsedMs};
   }catch(e){if(e.name==='AbortError')throw Error('Đã dừng hoặc API quá thời gian xử lý.');throw e;}
   finally{clearTimeout(timeout);if(pending.get(key)===controller)pending.delete(key);}
 }
