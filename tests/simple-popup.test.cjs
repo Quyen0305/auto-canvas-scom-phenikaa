@@ -114,19 +114,32 @@ test('Google Search needs only Gemini key and Cloudflare additionally needs an A
   }finally{h.close();}
 });
 
-test('9Router popup needs one key plus gateway and model names',async()=>{
+test('9Router Adaptive uses one pasted URL | APP_API_KEY input',async()=>{
   const h=await setup();try{
     h.el('aiModel').value='ninerouter';h.el('aiModel').dispatchEvent(new h.w.Event('change'));await flush();
-    assert.equal(h.el('searchKeySection').hidden,true);assert.equal(h.el('routerSection').hidden,false);
-    h.el('baseURL').value='https://router.example.org/v1';h.el('routerModel').value='my-quiz-model';h.el('searchModel').value='tavily/search';h.el('apiKey').value='ROUTER_PRIVATE';h.el('start').click();await flush();
-    const start=h.messages.find(m=>m.action==='SUITE_START');assert.equal(start.data.engine,'ninerouter_api');assert.equal(start.data.baseURL,'https://router.example.org/v1');assert.equal(start.data.model,'my-quiz-model');assert.equal(start.data.searchModel,'tavily/search');assert.equal(start.data.searchKey,undefined);
+    assert.equal(h.el('searchKeySection').hidden,true);assert.equal(h.el('routerSection').hidden,true);
+    assert.match(h.el('apiKeyLabel').textContent,/Kết nối/);
+    h.el('apiKey').value='https://adaptive.example.org | '+ 'x'.repeat(40);
+    h.el('start').click();await flush();
+    const start=h.messages.find(m=>m.action==='SUITE_START');
+    assert.equal(start.data.engine,'ninerouter_api');
+    assert.equal(start.data.model,'adaptive');
+    assert.equal(start.data.baseURL,'https://adaptive.example.org');
+    assert.equal(start.data.apiKey,'x'.repeat(40));
+    assert.equal(start.data.searchKey,undefined);
     h.w.dispatchEvent(new h.w.Event('pagehide'));assert.equal(h.el('apiKey').value,'');
   }finally{h.close();}
 });
 
-test('reopened 9Router popup restores gateway and models and starts with its retained key',async()=>{
-  const h=await setup({engine:'ninerouter_api',keyReady:true,aiConfig:{model:'my-quiz-model',routerModel:'my-quiz-model',baseURL:'https://router.example.org/v1',searchModel:'exa/search'}});
-  try{assert.equal(h.el('aiModel').value,'ninerouter');assert.equal(h.el('baseURL').value,'https://router.example.org/v1');assert.equal(h.el('routerModel').value,'my-quiz-model');assert.equal(h.el('searchModel').value,'exa/search');h.el('apiKey').value='';h.el('start').click();await flush();const start=h.messages.find(m=>m.action==='SUITE_START');assert.ok(start);assert.equal(start.data.apiKey,undefined);assert.equal(start.data.model,'my-quiz-model');}finally{h.close();}
+test('reopened Adaptive popup reuses session credentials without extra input',async()=>{
+  const h=await setup({engine:'ninerouter_api',keyReady:true,aiConfig:{model:'adaptive',baseURL:'https://adaptive.example.org'}});
+  try{
+    assert.equal(h.el('aiModel').value,'ninerouter');
+    assert.equal(h.el('routerSection').hidden,true);
+    h.el('apiKey').value='';h.el('start').click();await flush();
+    const start=h.messages.find(m=>m.action==='SUITE_START');
+    assert.ok(start);assert.equal(start.data.apiKey,undefined);assert.equal(start.data.model,'adaptive');
+  }finally{h.close();}
 });
 
 test('editing a gateway URL cannot carry a visible key draft to the new destination',async()=>{
