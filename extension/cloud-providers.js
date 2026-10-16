@@ -48,7 +48,7 @@ globalThis.SuiteCloud = (() => {
     if(!valid(config))throw error('Mô hình hoặc nhà cung cấp AI không hợp lệ.');
     if(config.engine==='ninerouter_api'){
       if(config.model==='adaptive') {
-        adaptiveAnswerURL(config.baseURL);
+        adaptiveAnswerURL(globalThis.ADAPTIVE_BACKEND_URL || config.baseURL);
         if(!config.apiKey)throw error('Dán kết nối Adaptive Search (URL | APP_API_KEY).');
         return;
       }
@@ -111,7 +111,7 @@ globalThis.SuiteCloud = (() => {
       throw error('Adaptive Search hiện chỉ hỗ trợ câu hỏi chọn một đáp án.','UNSUPPORTED_QUESTION');
     const labels='ABCDEFGH';
     const choices=Object.fromEntries(options.map((choice,i)=>[labels[i],choice]));
-    const json=await request(adaptiveAnswerURL(config.baseURL),config.apiKey,
+    const json=await request(adaptiveAnswerURL(globalThis.ADAPTIVE_BACKEND_URL || config.baseURL),config.apiKey,
       {question:text,choices,mode:'adaptive'},'Adaptive Search VPS',config,signal,55000);
     const letter=String(json.answer_letter || '').trim().toUpperCase();
     const index=labels.indexOf(letter);
@@ -125,6 +125,7 @@ globalThis.SuiteCloud = (() => {
       id:question.id,answerable:true,selected_indices:[index],answer_texts:[options[index]],explanation:reason
     }]} : {answers:[index+1],reason};
     return {data,sources:sources(json.sources,config).map(({content,...source})=>source),
+      method:json.used_search===true?'AI + Search':'AI trực tiếp',modelUsed:String(json.model_used || '').slice(0,90),elapsedMs:Number(json.elapsed_ms)||null,
       warning:typeof json.warning==='string' ? redact(json.warning,config).slice(0,300) : null,searchSuggestions:''};
   }
   async function solve(config,{prompt,query,schema,signal,questionData}) {
