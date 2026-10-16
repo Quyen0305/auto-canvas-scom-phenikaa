@@ -1,40 +1,40 @@
-# 9Router option → Adaptive Search v0.2.0 (Oracle VPS)
+# 9Router → Adaptive Search VPS
 
-Select **9Router · AI + tìm kiếm trên VPS** in the extension. It now uses the **Adaptive Search backend** endpoint, **not** direct 9Router /v1/chat/completions or /v1/search.
+The Chrome popup now requires **only APP_API_KEY** for the 9Router option. Gemini, combo1 and SearXNG are selected by the VPS backend automatically.
 
-## One-line setup
+## Configure the backend URL once
 
-The popup displays one connection field. Paste:
+Set `globalThis.ADAPTIVE_BACKEND_URL` in `extension/adaptive-config.js` to your publicly reachable **Adaptive Search (port 8765)** HTTPS address:
 
+```js
+globalThis.ADAPTIVE_BACKEND_URL = 'https://YOUR-ADAPTIVE-SEARCH.trycloudflare.com';
 ```
-https://YOUR-ADAPTIVE-BACKEND.trycloudflare.com | APP_API_KEY
-```
 
-- Use the **Adaptive Search backend** HTTPS URL (port 8765 on the VPS), **not** the 9Router tunnel (port 20128).
-- `APP_API_KEY` is the *client* key created by the backend setup, **not** `ROUTER_API_KEY`.
-- Leave the URL as the root; `/v1` or `/v1/answer` also work. Never put the API key in the URL.
-- The extension keeps credentials in `chrome.storage.session` / worker memory, not local disk. They are cleared after Chrome fully exits.
-- On the same Chrome session, you can click Start again without reentering the connection.
-- Server-side: Gemini primary, combo1 fallback, SearXNG (Adaptive mode searches only when needed).
+**Important:** The repository is public. Commit only the **public URL**, never the `APP_API_KEY` or `ROUTER_API_KEY`. For a permanent setup, use a stable Cloudflare Named Tunnel; Quick Tunnel URLs are temporary and must be updated in the file when they change. The URL of the *9Router* tunnel (port 20128) is NOT the correct endpoint.
 
-To expose the existing backend for a **temporary development test**, on the VPS:
+Then reload the unpacked extension at `chrome://extensions`. Choose 9Router and paste **APP_API_KEY only**. It is kept in session storage/worker memory, never the on-disk settings.
+
+## Logs
+
+For Adaptive answers, SCORM popup reports the most recent method; Canvas status reports the chosen method per question:
+
+- `AI trực tiếp · gemini-3.5-flash-lite · 10s` — backend did not search the web.
+- `AI + Search · gemini-3.5-flash-lite · 12s` — backend used SearXNG search.
+
+These are method indicators, not proof of answer accuracy. The extension does not store question/answer archives.
+
+## Connect for testing
 
 ```bash
 curl -fsS http://127.0.0.1:8765/health
-sudo docker rm -f adaptive-search-tunnel 2>/dev/null || true
-sudo docker run -d --name adaptive-search-tunnel --restart unless-stopped --network host \
-  cloudflare/cloudflared:latest tunnel --no-autoupdate --url http://127.0.0.1:8765
-sudo docker logs --tail 50 adaptive-search-tunnel
+sudo docker logs --tail 100 adaptive-search-tunnel
 ```
 
-Look for `https://...trycloudflare.com` and paste it with `APP_API_KEY` in the extension. For a stable deployment use Cloudflare Named Tunnel and an access-control layer, rather than publishing a long-lived app key through a public Quick Tunnel. The URL changes if the Quick Tunnel is recreated.
+Use the *latest* HTTPS Quick Tunnel for port 8765, copied into `extension/adaptive-config.js`. The key is only entered manually in Chrome.
 
-## Compatibility / limitations
+## Limitations
 
-- Applies only to the **9Router** option. Other providers are unchanged.
-- The existing Canvas/SCORM integrations receive numeric answer indexes as before.
-- Adaptive Search v0.2.0 currently supports **single-answer** multiple-choice questions with **2–8 options**. Unsupported multi-answer questions are explicitly rejected, never guessed.
-- Source snippets are references, not proof that a claim has been independently verified.
-- Questions plus answer options are sent to the remote VPS when this provider is selected.
-- Internet access, a running backend, a working tunnel, and a valid session key are required.
-- To test: `npm test` in the repository root, then load the `extension/` folder with Chrome Developer mode.
+- Adaptive Search backend v0.2.0 supports single-answer multiple choice with 2–8 choices. Multi-answer and unsupported formats stop rather than guess.
+- Every selected question (text and options) is transmitted over HTTPS to your VPS.
+- For production, protect the endpoint with appropriately scoped authentication and a stable domain.
+- Test with `npm test` locally, then load `extension/` in Chrome developer mode.
