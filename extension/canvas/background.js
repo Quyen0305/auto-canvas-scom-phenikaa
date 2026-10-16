@@ -390,7 +390,7 @@ async function handleSolveQuestions(data,sender) {
   if(!globalThis.SuiteCloud || ['gemini_api','chrome_ai'].includes(data.engine))return solveQuestions(data,sender);
   const key=chromeAiJobKey(data,sender),controller=new AbortController();
   if(cloudJobs.has(key))throw apiError('API đang xử lý câu này.','BUSY');
-  cloudJobs.set(key,controller);const timeout=setTimeout(()=>controller.abort(),20000);
+  cloudJobs.set(key,controller);const timeout=setTimeout(()=>controller.abort(),data.engine==='ninerouter_api' && data.model==='adaptive'?65000:20000);
   try{return await solveQuestions(data,sender,controller);}
   finally{clearTimeout(timeout);if(cloudJobs.get(key)===controller)cloudJobs.delete(key);}
 }
