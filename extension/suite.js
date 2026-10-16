@@ -24,7 +24,7 @@
   }
   function selection(){
     const value=$('aiModel').value;
-    if(value==='ninerouter')return {engine:'ninerouter_api',model:$('routerModel').value.trim()};
+    if(value==='ninerouter')return {engine:'ninerouter_api',model:'adaptive'};
     if(value==='chrome_ai')return {engine:'chrome_ai',model:/^gemini-/.test(ai.model)?ai.model:'gemini-3.8-flash'};
     if(value.includes('|')){const [engine,model]=value.split('|');return {engine,model};}
     return {engine:'gemini_api',model:value};
@@ -33,15 +33,20 @@
     const engine=selection().engine,fields=['apiKey'];
     if(['groq_api','cloudflare_api','openrouter_api'].includes(engine))fields.push('searchKey');
     if(engine==='cloudflare_api')fields.push('accountId');
-    if(engine==='ninerouter_api')fields.push('baseURL','searchModel');
+    if(engine==='ninerouter_api'){
+      const pasted=$('apiKey').value.trim();
+      if(pasted){const parsed=pasted.split('|');if(parsed.length===2)return {apiKey:parsed[1].trim(),baseURL:parsed[0].trim()};}
+      return {};
+    }
     return Object.fromEntries(fields.map(id=>[id,$(id).value.trim()]).filter(([,value])=>value));
   }
   function clearInputs(){for(const id of ['apiKey','searchKey','accountId'])$(id).value='';}
   function aiUI(){
     const chosen=selection(),paired=['groq_api','cloudflare_api','openrouter_api'].includes(chosen.engine);
-    $('keySection').hidden=chosen.engine==='chrome_ai';$('searchKeySection').hidden=!paired;$('accountSection').hidden=chosen.engine!=='cloudflare_api';$('routerSection').hidden=chosen.engine!=='ninerouter_api';
-    $('apiKeyLabel').textContent=({groq_api:'Groq API key',cloudflare_api:'Cloudflare API token',openrouter_api:'OpenRouter API key',ninerouter_api:'9Router API key'})[chosen.engine] || 'Gemini API key';
-    const help={ninerouter_api:'Chỉ nhập 1 key 9Router. Cấu hình AI và tìm kiếm tại 9Router trên VPS; key thật của các nhà cung cấp nằm trên VPS.',groq_api:'Cần 2 key: Groq và Tavily. Tìm kiếm nhanh, mỗi câu một lượt.',cloudflare_api:'Cần token Cloudflare, Account ID và key Tavily.',openrouter_api:'Dùng bộ định tuyến mô hình miễn phí của OpenRouter và tìm kiếm Tavily. Cần 2 key.',gemini_search:'Chỉ cần key Gemini. Tìm kiếm Google tích hợp; model có thể không trả nguồn cho mọi câu.'};
+    $('keySection').hidden=chosen.engine==='chrome_ai';$('searchKeySection').hidden=!paired;$('accountSection').hidden=chosen.engine!=='cloudflare_api';$('routerSection').hidden=true;
+    $('apiKeyLabel').textContent=({groq_api:'Groq API key',cloudflare_api:'Cloudflare API token',openrouter_api:'OpenRouter API key',ninerouter_api:'Kết nối Adaptive Search VPS'})[chosen.engine] || 'Gemini API key';
+    if(chosen.engine==='ninerouter_api')$('apiKey').placeholder='https://your-backend.trycloudflare.com | APP_API_KEY';
+    const help={ninerouter_api:'Dán một dòng gồm HTTPS URL của Adaptive Search và APP_API_KEY, ngăn bằng dấu |. Không dùng key 9Router gốc. AI, SearXNG và fallback chạy trên VPS.',groq_api:'Cần 2 key: Groq và Tavily. Tìm kiếm nhanh, mỗi câu một lượt.',cloudflare_api:'Cần token Cloudflare, Account ID và key Tavily.',openrouter_api:'Dùng bộ định tuyến mô hình miễn phí của OpenRouter và tìm kiếm Tavily. Cần 2 key.',gemini_search:'Chỉ cần key Gemini. Tìm kiếm Google tích hợp; model có thể không trả nguồn cho mọi câu.'};
     $('providerHelp').hidden=!help[chosen.engine];$('providerHelp').textContent=help[chosen.engine] || '';
   }
   function prepareAI(){
@@ -68,7 +73,7 @@
     if(closed || preparing)return;
     $('searchKey').placeholder=ai.searchKeySaved?'Key Tavily trong RAM đã sẵn sàng':'Nhập key Tavily cho phiên này';
     if(!$('accountId').value && ai.accountId)$('accountId').placeholder='Account ID trong RAM đã sẵn sàng';
-    $('apiKey').placeholder=ai.keySaved?'Key tạm đã sẵn sàng · Nhập để thay thế':'Nhập API key cho phiên này';
+    $('apiKey').placeholder=ai.engine==='ninerouter_api'?(ai.keySaved?'Kết nối VPS trong RAM đã sẵn sàng':'https://backend.trycloudflare.com | APP_API_KEY'):(ai.keySaved?'Key tạm đã sẵn sàng · Nhập để thay thế':'Nhập API key cho phiên này');
     $('aiStatus').textContent=ai.engine==='chrome_ai'?'AI trên máy · Không cần API key':ai.keySaved?'Key trong RAM đã sẵn sàng · Giữ đến khi thoát hẳn Chrome.':'Nhập API key · Chỉ giữ tạm trong RAM, không ghi xuống đĩa.';
   }
   async function save(withKey=false){
@@ -76,9 +81,7 @@
     const result=await settings({...selection(),...(withKey?entered():{})});
     if(closed||$('aiModel').value!==value)return;
     ai=result;
-    if(!withKey && ai.engine==='ninerouter_api'){
-      $('baseURL').value=ai.baseURL || '';$('routerModel').value=ai.routerModel || ai.model || '';$('searchModel').value=ai.searchModel || 'tavily/search';
-    }
+    if(!withKey && ai.engine==='ninerouter_api')$('apiKey').value='';
     keyUI();
   }
   async function canvas(command){
@@ -115,7 +118,7 @@
     const preparation=local && command!=='START'?prepareAI():Promise.resolve();
     try{
       if(!local){
-        if(selection().engine==='ninerouter_api' && !$('routerModel').value.trim())throw Error('Nhập model AI hoặc combo đã cấu hình trong 9Router.');
+        if(selection().engine==='ninerouter_api' && $(`apiKey`).value.trim() && !$(`apiKey`).value.includes('|'))throw Error('Dán URL HTTPS và APP_API_KEY cách nhau bằng dấu |.');
         const key=$('apiKey').value.trim();
         if(!key && !ai.keySaved)throw Error('Nhập API key cho phiên này. Key chỉ giữ tạm trong RAM.');
         const pending=chrome.runtime.sendMessage({action:'SUITE_START',tabId,command:command==='START'?'scorm':command,
@@ -180,7 +183,7 @@
     const value=ai.engine==='chrome_ai'?'chrome_ai':ai.engine==='gemini_api'?ai.model:ai.engine==='ninerouter_api'?'ninerouter':ai.engine+'|'+ai.model;
     if(![...$('aiModel').options].some(option=>option.value===value))$('aiModel').add(new Option(ai.model,value));
     $('aiModel').value=value;
-    if(ai.engine==='ninerouter_api'){$('baseURL').value=ai.baseURL || '';$('routerModel').value=ai.routerModel || ai.model || '';$('searchModel').value=ai.searchModel || 'tavily/search';}
+    if(ai.engine==='ninerouter_api'){$('baseURL').value='';$('routerModel').value='';$('searchModel').value='';}
     aiUI();
     keyUI();
     let url;try{url=new URL(tabUrl);}catch{}
