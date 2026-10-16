@@ -1,5 +1,5 @@
 // One worker, two independent modules. Canvas uses action; SCORM uses type.
-importScripts('runtime-storage.js','cloud-providers.js','shared-settings.js','background.js','canvas-compat.js','canvas/chrome-ai.js');
+importScripts('runtime-storage.js','adaptive-config.js','cloud-providers.js','shared-settings.js','background.js','canvas-compat.js','canvas/chrome-ai.js');
 const SuiteCanvasAI = {solve: requestCanvasAI};
 importScripts('canvas/background.js');
 
