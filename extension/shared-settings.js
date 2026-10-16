@@ -27,7 +27,13 @@ globalThis.SuiteSettings = (() => {
     if(ai.engine==='ninerouter_api' && patch.baseURL?.trim() && profile.baseURL){
       try{changedGateway=SuiteCloud.gatewayBase(patch.baseURL.trim())!==SuiteCloud.gatewayBase(profile.baseURL);}catch{changedGateway=true;}
     }
-    if(ai.engine==='ninerouter_api'){if(!ai.model && profile.model)ai.model=profile.model;if(ai.model)profile.model=ai.model;}
+    if(ai.engine==='ninerouter_api'){
+      if(ai.model==='adaptive' && profile.model && profile.model!=='adaptive'){
+        delete profile.key;delete profile.baseURL;delete profile.searchModel;
+      }
+      if(!ai.model && profile.model)ai.model=profile.model;
+      if(ai.model)profile.model=ai.model;
+    }
     for(const field of ['apiKey','searchKey','accountId','baseURL','searchModel']){
       if(typeof patch[field]!=='string'||!patch[field].trim())continue;
       const entered=patch[field].trim();if(/\s/.test(entered))throw Error((({accountId:'Account ID',baseURL:'Địa chỉ 9Router',searchModel:'Model tìm kiếm'})[field] || 'API key')+' chứa khoảng trắng. Hãy kiểm tra lại.');
