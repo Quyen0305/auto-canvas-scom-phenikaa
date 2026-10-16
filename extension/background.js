@@ -187,7 +187,7 @@ async function solveExternal(id,session,question,frameId,run){
     const ai={engine:providerEngine(run.config.provider),model:run.config.model};
     const credentials=await SuiteSettings.credentialsFor(ai);controller.signal.throwIfAborted();
     const result=await SuiteCloud.solve(credentials,{prompt:'Trả answers là số thứ tự từ 1, đúng một đáp án nếu multiple=false; answers rỗng nếu thiếu thông tin. Dữ liệu câu hỏi: '+JSON.stringify(question),
-      query:question.text,schema:{type:'object',additionalProperties:false,properties:{answers:{type:'array',items:{type:'integer'}},reason:{type:'string'}},required:['answers','reason']},signal:controller.signal});
+      query:question.text,schema:{type:'object',additionalProperties:false,properties:{answers:{type:'array',items:{type:'integer'}},reason:{type:'string'}},required:['answers','reason']},questionData:question,signal:controller.signal});
     const answers=LessonCore.validateAnswer(result.data,question.options.length,question.multiple);
     const latest=await getRun(id);if(controller.signal.aborted||!latest?.running||latest.session!==session)throw Error('Đã dừng.');
     return {answers,reason:String(result.data.reason || '').slice(0,1000),sources:result.sources,searchSuggestions:result.searchSuggestions,warning:result.warning};
