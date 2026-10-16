@@ -441,7 +441,7 @@ ${JSON.stringify(questions)}`;
     generated.set(answer.id, answerFields(answer));
   }
   return {
-    answers: questions.map(q => ({...generated.get(q.id), id: q.id, source: data.model || DEFAULT_MODEL, cached: false,...(web?{sources:web.sources,searchSuggestions:web.searchSuggestions,warning:web.warning}:{})})),
+    answers: questions.map(q => ({...generated.get(q.id), id: q.id, source: data.model || DEFAULT_MODEL, cached: false,...(web?{sources:web.sources,searchSuggestions:web.searchSuggestions,warning:web.warning,method:web.method,modelUsed:web.modelUsed,elapsedMs:web.elapsedMs}:{})})),
     cachedCount: 0
   };
 }
