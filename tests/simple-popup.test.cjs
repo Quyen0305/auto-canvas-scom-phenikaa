@@ -114,17 +114,17 @@ test('Google Search needs only Gemini key and Cloudflare additionally needs an A
   }finally{h.close();}
 });
 
-test('9Router Adaptive uses one pasted URL | APP_API_KEY input',async()=>{
+test('9Router Adaptive uses only APP_API_KEY input',async()=>{
   const h=await setup();try{
     h.el('aiModel').value='ninerouter';h.el('aiModel').dispatchEvent(new h.w.Event('change'));await flush();
     assert.equal(h.el('searchKeySection').hidden,true);assert.equal(h.el('routerSection').hidden,true);
-    assert.match(h.el('apiKeyLabel').textContent,/Kết nối/);
-    h.el('apiKey').value='https://adaptive.example.org | '+ 'x'.repeat(40);
+    assert.match(h.el('apiKeyLabel').textContent,/APP_API_KEY/);
+    h.el('apiKey').value='x'.repeat(40);
     h.el('start').click();await flush();
     const start=h.messages.find(m=>m.action==='SUITE_START');
     assert.equal(start.data.engine,'ninerouter_api');
     assert.equal(start.data.model,'adaptive');
-    assert.equal(start.data.baseURL,'https://adaptive.example.org');
+    assert.equal(start.data.baseURL,undefined);
     assert.equal(start.data.apiKey,'x'.repeat(40));
     assert.equal(start.data.searchKey,undefined);
     h.w.dispatchEvent(new h.w.Event('pagehide'));assert.equal(h.el('apiKey').value,'');
@@ -142,13 +142,13 @@ test('reopened Adaptive popup reuses session credentials without extra input',as
   }finally{h.close();}
 });
 
-test('pasting a new Adaptive connection replaces both URL and key in one action',async()=>{
+test('9Router key-only editing sends no URL or provider token',async()=>{
   const h=await setup({engine:'ninerouter_api',keyReady:true,aiConfig:{model:'adaptive',baseURL:'https://one.example.org'}});
   try {
-    h.el('apiKey').value='https://two.example.org | '+ 'n'.repeat(40);
+    h.el('apiKey').value='n'.repeat(40);
     h.el('start').click();await flush();
     const change=h.messages.find(m=>m.action==='SUITE_START');
-    assert.equal(change.data.baseURL,'https://two.example.org');
+    assert.equal(change.data.baseURL,undefined);
     assert.equal(change.data.apiKey,'n'.repeat(40));
     assert.equal(change.data.model,'adaptive');
   }finally{h.close();}
