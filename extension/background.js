@@ -190,6 +190,7 @@ async function solveExternal(id,session,question,frameId,run){
       query:question.text,schema:{type:'object',additionalProperties:false,properties:{answers:{type:'array',items:{type:'integer'}},reason:{type:'string'}},required:['answers','reason']},questionData:question,signal:controller.signal});
     const answers=LessonCore.validateAnswer(result.data,question.options.length,question.multiple);
     const latest=await getRun(id);if(controller.signal.aborted||!latest?.running||latest.session!==session)throw Error('Đã dừng.');
+    if(result.method)await (globalThis.SuiteStorage || chrome.storage).session.set({[`method:${id}`]:{text:[result.method,result.modelUsed,result.elapsedMs?Math.round(result.elapsedMs/1000)+'s':''].filter(Boolean).join(' · '),at:Date.now()}});
     return {answers,reason:String(result.data.reason || '').slice(0,1000),sources:result.sources,searchSuggestions:result.searchSuggestions,warning:result.warning,method:result.method,modelUsed:result.modelUsed,elapsedMs:result.elapsedMs};
   }catch(e){if(e.name==='AbortError')throw Error('Đã dừng hoặc API quá thời gian xử lý.');throw e;}
   finally{clearTimeout(timeout);if(pending.get(key)===controller)pending.delete(key);}
@@ -293,7 +294,7 @@ async function handle(message, sender) {
   if (message.type === 'GET_STATUS') {
     const all = await (globalThis.SuiteStorage || chrome.storage).session.get(null);
     const {config = {}} = await (globalThis.SuiteStorage || chrome.storage).local.get('config');
-    return {run: all[tabKey(id)], provider: config.provider || 'gemini', builtin: builtinStatus(),
+    return {run: all[tabKey(id)], methodLog:all[`method:${id}`] || null, provider: config.provider || 'gemini', builtin: builtinStatus(),
       frames: Object.entries(all).filter(([k]) => k.startsWith(`status:${id}:`)).map(([,v]) => v).sort((a,b) => b.at-a.at)};
   }
   if (message.type === 'DIAGNOSE') {
