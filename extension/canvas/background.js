@@ -424,7 +424,7 @@ ${JSON.stringify(questions)}`;
   let parsed,web;
   if(globalThis.SuiteCloud && ['groq_api','cloudflare_api','openrouter_api','gemini_search','ninerouter_api'].includes(data.engine)) {
     if(questions.length!==1)throw apiError('Phương án có tìm kiếm web xử lý từng câu riêng.','INVALID_INPUT');
-    web=await SuiteCloud.solve(data,{prompt,query:questions[0].questionText,schema:batchResponseSchema(questions),signal:controller.signal});
+    web=await SuiteCloud.solve(data,{prompt,query:questions[0].questionText,schema:batchResponseSchema(questions),questionData:questions[0],signal:controller.signal});
     controller.signal.throwIfAborted();parsed=web.data;
   }else {
     const json=await generateContent(data,{contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.1,topP:0.95,responseMimeType:'application/json',responseJsonSchema:batchResponseSchema(questions)}});
