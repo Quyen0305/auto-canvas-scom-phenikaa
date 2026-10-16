@@ -105,7 +105,8 @@
       if(result.builtin?.ready)modelReady=true;
       const run=result.run;
       const frame=result.frames?.find(item=>!item.text.startsWith('Chưa thấy slide'));
-      notice(run?.needsPreparation?(result.builtin?.phase==='error'?result.builtin.detail:'Đã bật chạy nền. Đang chuẩn bị AI để xử lý câu hỏi…'):run?.running?(frame?.text || run.message):(run?.message || 'Sẵn sàng. Bấm Bắt đầu để chạy bài học.'));
+      const status=run?.needsPreparation?(result.builtin?.phase==='error'?result.builtin.detail:'Đã bật chạy nền. Đang chuẩn bị AI để xử lý câu hỏi…'):run?.running?(frame?.text || run.message):(run?.message || 'Sẵn sàng. Bấm Bắt đầu để chạy bài học.');
+      notice(status+(run?.running && result.methodLog?.text?'\n'+result.methodLog.text:''));
     }catch(error){notice(error.message);}
   }
   async function start(command){
