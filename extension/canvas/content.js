@@ -490,6 +490,7 @@
         }
       }
 
+      let lastAdaptiveMethod='';
       if (pending.length) {
         throwIfCancelled(controller.signal);
         const web=['groq_api','cloudflare_api','openrouter_api','gemini_search','ninerouter_api'].includes(config.aiEngine);
@@ -505,12 +506,12 @@
           const result = await callGeminiApi(config, groups[index], controller.signal);
           applyAnswers(groups[index], result.answers);
           const method=result.answers?.[0]?.method;
-          if(method)updateStatus('✅ '+method+' · '+(result.answers[0].modelUsed || 'AI')+(result.answers[0].elapsedMs?' · '+(result.answers[0].elapsedMs/1000).toFixed(1)+'s':''), 'success');
+          if(method){lastAdaptiveMethod=method+' · '+(result.answers[0].modelUsed || 'AI')+(result.answers[0].elapsedMs?' · '+(result.answers[0].elapsedMs/1000).toFixed(1)+'s':'');updateStatus('✅ '+lastAdaptiveMethod, 'success');}
         }
       }
       if (config.autoClickAnswer) await saveCanvasProgress(applied, controller.signal);
       updateStatus("✅ Đã " + (config.autoClickAnswer ? "tích chọn" : "đánh dấu") + " đáp án cho " +
-        solvedCount + " câu.", "success");
+        solvedCount + " câu."+(lastAdaptiveMethod?' · '+lastAdaptiveMethod:''), "success");
       completedRun = { applied, autoClickAnswer: config.autoClickAnswer };
       return true;
     } catch (error) {
