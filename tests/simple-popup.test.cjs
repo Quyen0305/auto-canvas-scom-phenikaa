@@ -142,7 +142,14 @@ test('reopened Adaptive popup reuses session credentials without extra input',as
   }finally{h.close();}
 });
 
-test('editing a gateway URL cannot carry a visible key draft to the new destination',async()=>{
-  const h=await setup({engine:'ninerouter_api',keyReady:true,aiConfig:{model:'quiz',routerModel:'quiz',baseURL:'https://one.example.org/v1',searchModel:'tavily/search'}});
-  try{h.el('apiKey').value='OLD_ROUTER_KEY';h.el('baseURL').value='https://two.example.org/v1';h.el('baseURL').dispatchEvent(new h.w.Event('input'));await flush();assert.equal(h.el('apiKey').value,'');const change=h.messages.filter(m=>m.action==='SUITE_SETTINGS'&&m.data?.baseURL).at(-1);assert.equal(change.data.apiKey,undefined);}finally{h.close();}
+test('pasting a new Adaptive connection replaces both URL and key in one action',async()=>{
+  const h=await setup({engine:'ninerouter_api',keyReady:true,aiConfig:{model:'adaptive',baseURL:'https://one.example.org'}});
+  try {
+    h.el('apiKey').value='https://two.example.org | '+ 'n'.repeat(40);
+    h.el('start').click();await flush();
+    const change=h.messages.find(m=>m.action==='SUITE_START');
+    assert.equal(change.data.baseURL,'https://two.example.org');
+    assert.equal(change.data.apiKey,'n'.repeat(40));
+    assert.equal(change.data.model,'adaptive');
+  }finally{h.close();}
 });
