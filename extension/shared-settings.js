@@ -14,7 +14,7 @@ globalThis.SuiteSettings = (() => {
   async function writeCredential(entry){credential=entry;try{await session?.set({[SESSION_KEY]:entry});}catch{/* Missing/restricted session API: worker RAM only. */}}
   async function credentials(ai){
     const entry=await readCredential(),profile=entry?.providers?.[SuiteCloud.credentialId(ai.engine)] || {};
-    return {...ai,apiKey:profile.key || '',accountId:profile.accountId || '',searchKey:entry?.searchKey || '',baseURL:profile.baseURL || '',searchModel:profile.searchModel || '',routerModel:profile.model || ''};
+    return {...ai,apiKey:profile.key || '',accountId:profile.accountId || '',searchKey:entry?.searchKey || '',baseURL:ai.engine==='ninerouter_api' && ai.model==='adaptive'?(globalThis.ADAPTIVE_BACKEND_URL || profile.baseURL || ''):(profile.baseURL || ''),searchModel:profile.searchModel || '',routerModel:profile.model || ''};
   }
   async function update(patch={}){
     const data=await storage.local.get(['suite:ai','config']),entry=await readCredential();
