@@ -31,7 +31,7 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
       catch {
         await chrome.scripting.insertCSS({target:{tabId:id},files:['canvas/styles.css','canvas-compact.css']});
         if(!current())return {cancelled:true};
-        await chrome.scripting.executeScript({target:{tabId:id},files:['sources.js','canvas-compat.js','canvas/content.js','canvas-controls.js']});
+        await chrome.scripting.executeScript({target:{tabId:id},files:['sources.js','canvas-compat.js','canvas/content.js','canvas-controls.js','canvas-focus-diagnostics.js']});
         if(!current())return {cancelled:true};
         response=await chrome.tabs.sendMessage(id,control);
       }
