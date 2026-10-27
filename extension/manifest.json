@@ -65,7 +65,8 @@
         "sources.js",
         "canvas-compat.js",
         "canvas/content.js",
-        "canvas-controls.js"
+        "canvas-controls.js",
+        "canvas-focus-diagnostics.js"
       ],
       "run_at": "document_end"
     }
