@@ -90,7 +90,7 @@
     try{response=await chrome.tabs.sendMessage(tabId,message);}catch(error){
       if(['status','stop'].includes(command))throw Error('Tải lại trang Canvas để kết nối tiện ích.');
       await chrome.scripting.insertCSS({target:{tabId},files:['canvas/styles.css','canvas-compact.css']});
-      await chrome.scripting.executeScript({target:{tabId},files:['sources.js','canvas-compat.js','canvas/content.js','canvas-controls.js']});
+      await chrome.scripting.executeScript({target:{tabId},files:['sources.js','canvas-compat.js','canvas/content.js','canvas-controls.js','canvas-focus-diagnostics.js']});
       response=await chrome.tabs.sendMessage(tabId,message);
     }
     if(response?.error)throw Error(response.error);

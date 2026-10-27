@@ -31,6 +31,7 @@
     }
     if ((e.key === "x" || e.key === "X") && !e.ctrlKey && !e.altKey && !e.metaKey) {
       e.preventDefault();
+      globalThis.__canvasFocusDiag?.mark("shortcut_x");
       solveCurrentQuestion(true);
     }
   }
@@ -406,6 +407,7 @@
     completedRun = null;
     const controller = new AbortController();
     activeSolve = controller;
+    globalThis.__canvasFocusDiag?.mark("solve_start");
     // API backoff can exceed the worker idle timeout. Retain RAM state while solving.
     const heartbeat = setInterval(() => {
       if (!destroyed && !controller.signal.aborted) void sendBackground("SUITE_HEARTBEAT", {}).catch(() => {});
@@ -417,17 +419,22 @@
       if (isReviewPage()) throw new Error("Đây là trang đã chấm. Bấm Làm đến 10 điểm để bắt đầu lượt mới.");
       const resultsPanel = document.getElementById("canvas-ai-results");
       if (resultsPanel) { resultsPanel.textContent = ""; resultsPanel.style.display = "none"; }
+      globalThis.__canvasFocusDiag?.mark("dom_read_start");
       const questions = getQuestionsOnPage().map((q, index) => ({
         ...q, options: q.options.map(option => ({ ...option })), requestId: "q" + index
       }));
+      globalThis.__canvasFocusDiag?.mark("dom_read_done");
       if (!questions.length) throw new Error("Không tìm thấy câu hỏi nào!");
+      globalThis.__canvasFocusDiag?.mark("storage_start");
       const config = await getStoredConfig();
+      globalThis.__canvasFocusDiag?.mark("storage_done");
       if (targetMode || forceAutoClick) { config.autoClickAnswer = true; }
       if (targetMode) { config.autoNextQuestion = true; }
       let pending = questions;
       let solvedCount = 0;
       const applied = [];
       const applyAnswers = (group, answers) => {
+        globalThis.__canvasFocusDiag?.mark("answer_apply_start");
         throwIfCancelled(controller.signal);
         const byId = new Map();
         if (!Array.isArray(answers)) throw new Error("Thiếu đáp án từ background.");
@@ -476,6 +483,7 @@
           solvedCount++;
           applied.push({ question: q, answer });
         }
+        globalThis.__canvasFocusDiag?.mark("answer_apply_done");
         if (config.autoClickAnswer) verifyPageAnswers(applied, true);
       };
 
@@ -503,7 +511,9 @@
           throwIfCancelled(controller.signal);
           updateStatus("⏳ Đang giải nhóm " + (index + 1) + "/" + groups.length +
             " (" + groups[index].length + " câu)...", "running");
+          globalThis.__canvasFocusDiag?.mark("api_request_start");
           const result = await callGeminiApi(config, groups[index], controller.signal);
+          globalThis.__canvasFocusDiag?.mark("api_response_received");
           applyAnswers(groups[index], result.answers);
           const method=result.answers?.[0]?.method;
           if(method){lastAdaptiveMethod=method+' · '+(result.answers[0].modelUsed || 'AI')+(result.answers[0].elapsedMs?' · '+(result.answers[0].elapsedMs/1000).toFixed(1)+'s':'');updateStatus('✅ '+lastAdaptiveMethod, 'success');}
@@ -513,8 +523,10 @@
       updateStatus("✅ Đã " + (config.autoClickAnswer ? "tích chọn" : "đánh dấu") + " đáp án cho " +
         solvedCount + " câu."+(lastAdaptiveMethod?' · '+lastAdaptiveMethod:''), "success");
       completedRun = { applied, autoClickAnswer: config.autoClickAnswer };
+      globalThis.__canvasFocusDiag?.mark("solve_complete");
       return true;
     } catch (error) {
+      globalThis.__canvasFocusDiag?.mark("solve_error");
       reportError(error);
       return false;
     } finally {
